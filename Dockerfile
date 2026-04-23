@@ -8,13 +8,19 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-f
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG BUILD_TAG=unversioned
+ENV BUILD_TAG=${BUILD_TAG}
+ENV NEXT_PUBLIC_BUILD_TAG=${BUILD_TAG}
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN echo "Building with BUILD_TAG=${BUILD_TAG}" && npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
+ARG BUILD_TAG=unversioned
+ENV BUILD_TAG=${BUILD_TAG}
+ENV NEXT_PUBLIC_BUILD_TAG=${BUILD_TAG}
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -33,4 +39,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
 
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "echo \"[coti-auto] starting build ${BUILD_TAG}\" && node server.js"]

@@ -8,8 +8,10 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const BUILD_TAG = process.env.BUILD_TAG ?? "dev";
+
 export const metadata: Metadata = {
-  title: "Coti Auto · Zebra",
+  title: `Coti Auto · Zebra · ${BUILD_TAG}`,
   description: "Cotizaciones automáticas a partir de juntas de Drive.",
 };
 

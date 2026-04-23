@@ -103,7 +103,7 @@ export default function HomeClient() {
       </main>
       <footer className="mt-12 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-bone/40">
         <span>Zebra · Coti Auto</span>
-        <span>n8n</span>
+        <span data-testid="build-tag">build {process.env.NEXT_PUBLIC_BUILD_TAG ?? "dev"}</span>
       </footer>
     </ZebraFrame>
   );
