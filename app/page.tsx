@@ -65,22 +65,45 @@ export default function HomePage() {
       <Header />
       <main className="flex flex-1 flex-col">
         {status === "idle" ? (
-          <QuoteForm
-            onSubmit={handleSubmit}
-            isSubmitting={false}
-            errorMessage={errorMessage}
-          />
+          <section className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center pb-16 pt-12 sm:pt-20">
+            <div className="mb-12 text-center sm:mb-16">
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.4em] text-bone/60">
+                Cotizaciones automáticas
+              </p>
+              <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
+                De la junta de Drive
+                <br />
+                al documento listo.
+              </h1>
+              <p className="mx-auto mt-6 max-w-md text-sm text-bone/60 sm:text-base">
+                Pega la liga de la junta y el nombre de la cuenta. En aproximadamente
+                2 minutos tienes el documento generado en Drive.
+              </p>
+            </div>
+
+            <QuoteForm
+              onSubmit={handleSubmit}
+              isSubmitting={false}
+              errorMessage={errorMessage}
+            />
+          </section>
         ) : null}
 
-        {status === "loading" ? <LoadingScreen account={account} /> : null}
+        {status === "loading" ? (
+          <section className="flex flex-1 items-center justify-center">
+            <LoadingScreen account={account} />
+          </section>
+        ) : null}
 
         {status === "done" && result ? (
-          <ResultCard account={account} result={result} onReset={handleReset} />
+          <section className="flex flex-1 items-center justify-center">
+            <ResultCard account={account} result={result} onReset={handleReset} />
+          </section>
         ) : null}
       </main>
-      <footer className="mt-12 flex items-center justify-between border-t border-ink/20 pt-4 text-xs uppercase tracking-widest text-ink/60">
-        <span>Coti Auto · Zebra</span>
-        <span>n8n · EasyPanel</span>
+      <footer className="mt-12 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-bone/40">
+        <span>Zebra · Coti Auto</span>
+        <span>n8n</span>
       </footer>
     </ZebraFrame>
   );

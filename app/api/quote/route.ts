@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 const DEFAULT_WEBHOOK_URL =
   "https://n8n-n8n.9qd6cz.easypanel.host/webhook/85a05e12-43a0-449e-9c8a-3e1df24b4769";
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 function getWebhookUrl(): string {
   return process.env.N8N_WEBHOOK_URL?.trim() || DEFAULT_WEBHOOK_URL;
@@ -24,10 +24,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "Cuerpo JSON inválido." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Cuerpo JSON inválido." }, { status: 400 });
   }
 
   const { account, meeting_url } = (body ?? {}) as {
@@ -85,8 +82,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const extracted = normalizeQuoteResult(parsed, account.trim());
-    return NextResponse.json(extracted, { status: 200 });
+    return NextResponse.json(
+      normalizeQuoteResult(parsed, account.trim()),
+      { status: 200 },
+    );
   } catch (error) {
     const isAbort = error instanceof Error && error.name === "AbortError";
     return NextResponse.json(
@@ -105,18 +104,11 @@ export async function POST(request: Request) {
 
 function normalizeQuoteResult(payload: unknown, accountFallback: string) {
   const source = unwrap(payload);
-  const pdfUrl =
+  const driveUrl =
     pickString(source, [
-      "pdf_url",
-      "pdfUrl",
-      "pdf",
-      "pdf_link",
-      "pdfLink",
-      "file_url",
-      "fileUrl",
-    ]) ?? undefined;
-  const docsUrl =
-    pickString(source, [
+      "drive_url",
+      "driveUrl",
+      "drive",
       "docs_url",
       "docsUrl",
       "doc_url",
@@ -125,13 +117,14 @@ function normalizeQuoteResult(payload: unknown, accountFallback: string) {
       "documentUrl",
       "google_docs",
       "googleDocs",
+      "url",
+      "link",
     ]) ?? undefined;
   const account = pickString(source, ["account", "cuenta", "client", "name"]) ?? accountFallback;
 
   return {
     account,
-    pdf_url: pdfUrl,
-    docs_url: docsUrl,
+    drive_url: driveUrl,
     raw: payload ?? null,
   };
 }

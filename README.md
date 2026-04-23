@@ -4,8 +4,8 @@ Dashboard en blanco y negro (estilo zebra) para disparar cotizaciones automátic
 a partir de una junta de Google Drive.
 
 - Stack: **Next.js 15 (App Router) + Tailwind CSS**.
-- UI: formulario → pantalla de carga zebra → tarjeta de resultado con links al
-  **PDF** y al **Google Docs** que responde el flujo de n8n.
+- UI: formulario → pantalla de carga con barra de progreso de **2:15** → resultado
+  con un único enlace al documento de Drive que responde el flujo de n8n.
 - Integración: el backend hace `POST` al webhook de n8n (evita CORS).
 - Deploy: imagen Docker multi-stage pensada para **EasyPanel**.
 
@@ -37,18 +37,18 @@ El dashboard envía al webhook un JSON:
 }
 ```
 
-Se espera que el último nodo de n8n responda un JSON con los enlaces. Se aceptan
-varias formas (arrays / `json` wrapper de n8n) y los siguientes alias:
+Se espera que el último nodo de n8n responda un JSON con el enlace de Drive.
+Se aceptan varias formas (arrays / `json` wrapper de n8n) y los siguientes
+alias para el campo:
 
-- PDF: `pdf_url`, `pdfUrl`, `pdf`, `pdf_link`, `pdfLink`, `file_url`, `fileUrl`.
-- Docs: `docs_url`, `docsUrl`, `doc_url`, `docUrl`, `document_url`, `documentUrl`, `google_docs`, `googleDocs`.
+`drive_url`, `driveUrl`, `drive`, `docs_url`, `docsUrl`, `doc_url`, `docUrl`,
+`document_url`, `documentUrl`, `google_docs`, `googleDocs`, `url`, `link`.
 
 Ejemplo mínimo:
 
 ```json
 {
-  "pdf_url": "https://.../cotizacion.pdf",
-  "docs_url": "https://docs.google.com/document/d/.../edit"
+  "drive_url": "https://docs.google.com/document/d/.../edit"
 }
 ```
 

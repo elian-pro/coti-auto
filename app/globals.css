@@ -3,40 +3,27 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
 body {
-  background: #fafafa;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+body {
+  font-feature-settings: "ss01", "cv11";
+}
+
+::selection {
+  background: #ffffff;
   color: #0a0a0a;
 }
 
-/* Diagonal zebra stripes used as ambient background */
-.zebra-bg {
-  background-image: repeating-linear-gradient(
-    135deg,
-    #0a0a0a 0,
-    #0a0a0a 28px,
-    #fafafa 28px,
-    #fafafa 56px
-  );
-}
-
-/* Horizontal zebra stripes used for the loading bar */
-.zebra-bar {
-  background-image: repeating-linear-gradient(
-    90deg,
-    #0a0a0a 0,
-    #0a0a0a 14px,
-    #fafafa 14px,
-    #fafafa 28px
-  );
-  background-size: 56px 100%;
-}
-
-.card-shadow {
-  box-shadow:
-    0 1px 0 0 #0a0a0a,
-    0 10px 30px -15px rgba(10, 10, 10, 0.35);
+/* Hide spinners on number inputs */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

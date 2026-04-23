@@ -4,9 +4,8 @@ export type QuoteRequest = {
 };
 
 export type QuoteResult = {
-  pdf_url?: string;
-  docs_url?: string;
   account?: string;
+  drive_url?: string;
   raw?: unknown;
 };
 

@@ -6,25 +6,14 @@ const config: Config = {
     extend: {
       colors: {
         ink: "#0a0a0a",
-        bone: "#fafafa",
+        bone: "#ffffff",
       },
       fontFamily: {
-        sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
-        display: ["\"Archivo Black\"", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
       },
-      keyframes: {
-        "zebra-slide": {
-          "0%": { backgroundPosition: "0 0" },
-          "100%": { backgroundPosition: "56px 0" },
-        },
-        "stripe-pulse": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.65" },
-        },
-      },
-      animation: {
-        "zebra-slide": "zebra-slide 1.4s linear infinite",
-        "stripe-pulse": "stripe-pulse 1.6s ease-in-out infinite",
+      letterSpacing: {
+        brand: "0.45em",
       },
     },
   },
