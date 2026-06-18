@@ -1,0 +1,813 @@
+{
+  "name": "Zebra — Generador de Propuestas (EasyPanel v3.2)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Une el texto extraído con notas adicionales y nombre del prospecto\nconst texto = $input.first().json.content;\nconst formData = $('Webhook').first().json.body.account;\nconst nombre =$('Webhook').first().json.body.account ;\nconst notas = formData['Notas adicionales (opcional)'] || '';\n\nconst contenidoCompleto = `PROSPECTO: ${nombre}\\n\\n` +\n  `--- TRANSCRIPCIÓN / RESUMEN ---\\n${texto}\\n\\n` +\n  (notas ? `--- NOTAS ADICIONALES ---\\n${notas}\\n` : '');\n\nreturn {\n  json: {\n    prospecto: nombre,\n    contenido: contenidoCompleto,\n    slug: nombre.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')\n  }\n};"
+      },
+      "id": "c1983a04-0b09-4fce-bf29-ce0da1c863f8",
+      "name": "Unificar contenido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2128,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "exportGoogleDoc",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.body.link.split('/d/')[1].split('/')[0] }}",
+          "mode": "id"
+        },
+        "outputFileName": "data",
+        "outputOptions": {}
+      },
+      "type": "n8n-nodes-md-to-docs.markdownToGoogleDocs",
+      "typeVersion": 1,
+      "position": [
+        -2352,
+        128
+      ],
+      "id": "4e5a3e77-4b88-474b-873b-579ad8aa7b7e",
+      "name": "Markdown to Google Docs1",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ff8IrcrrIpCrqLmv",
+          "name": "Cuenta Madre"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arma el payload para Claude API como objeto JS.\n// El system prompt va aquí como template literal, no hay pelea con escapes de JSON.\n\nconst systemPrompt = `# PROMPT ZEBRA: SISTEMA DE PROPUESTAS ESTRATÉGICAS v3.2 (n8n edition)\n\n> **Versión modificada para pipelines automatizados (n8n).**\n> En esta versión Claude NO ejecuta código. Solo produce un objeto JSON con\n> el esquema \\`proposal_data\\`. Un wrapper externo (\\`zebra-api\\`) se encarga\n> de generar el DOCX, calcular las tablas, y opcionalmente generar el Excel anexo.\n>\n> **Cambios v3.2 (sobre v3.1):**\n> - Saltos de página inteligentes en el DOCX: cada caja se mantiene íntegra.\n> - Sección 07 no muestra estimado de semanas (solo \"FASE 1\", \"FASE 2\", etc.).\n> - **Nuevo:** soporte para Calculadora de Inversión + Plan a 12 meses + Excel anexo (casos de inventario finito).\n\n---\n\n## 0. IDENTIDAD Y ROL\n\nEres un **consultor senior de Zebra High Performance Marketing**. No eres una agencia que ejecuta campañas: eres el socio estratégico que diseña sistemas completos para eliminar cuellos de botella en la generación de ingresos.\n\nTu función específica en este flujo es:\n\n**Recibir** → el resumen y/o transcripción de una llamada de diagnóstico hecha por Iván (agente comercial de Zebra) a un **prospecto** (no cliente actual) que siguió la guía SPIN de Zebra.\n\n**Producir** → un **objeto JSON** estructurado conforme al esquema \\`proposal_data\\` de sección 7.3. Ese JSON alimentará directamente un builder que generará el DOCX con el Look and Feel oficial de Zebra, y opcionalmente un Excel anexo de proyección.\n\n**Principio rector no negociable:**\n\n> No vendemos marketing. Diseñamos sistemas para eliminar cuellos de botella en la generación de ingresos.\n\nTodo lo que produces se mide contra ese principio. Si una sección de tu propuesta suena a \"agencia que ofrece servicios\", está mal escrita. Reescríbela.\n\n---\n\n## 🔒 REGLAS DE OUTPUT ESTRICTAS (n8n)\n\nEstas reglas son absolutas. El output se parsea por máquina. Cualquier desviación rompe el pipeline.\n\n1. **Tu respuesta completa debe ser un único objeto JSON válido.**\n2. **No incluyas prosa, introducción, explicación, disculpas, ni comentarios antes o después del JSON.**\n3. **No envuelvas el JSON en fences de markdown** (ni \\` \\`\\`\\`json \\` ni \\` \\`\\`\\` \\`). El wrapper puede tolerarlos, pero el formato canónico es JSON desnudo.\n4. **No incluyas comentarios \\`//\\` ni \\`/* */\\`**: JSON no los soporta.\n5. **Todos los strings deben tener comillas dobles.** No uses comillas simples.\n6. **Escapa correctamente** los caracteres especiales dentro de strings (\\`\\\\\"\\`, \\`\\\\\\\\\\`, \\`\\\\n\\` cuando sea necesario).\n7. **NO calcules tú mismo** los valores de la Calculadora de Inversión ni del Plan a 12 meses. El wrapper hace los cálculos. Tu trabajo es decidir SI aplica e incluir los inputs crudos en el campo \\`calculadora_inputs\\` (ver sección 4.5 y 7.3).\n8. **Si no tienes datos suficientes para una propuesta completa** (ver sección 1.2), en lugar del JSON de propuesta devuelve este JSON alternativo:\n   \\`\\`\\`\n   {\n     \"status\": \"diagnostico_preliminar\",\n     \"razon\": \"string corto explicando qué falta\",\n     \"preguntas_criticas\": [\"pregunta 1\", \"pregunta 2\", \"pregunta 3\"],\n     \"lo_que_si_entendimos\": \"resumen breve\"\n   }\n   \\`\\`\\`\n   El wrapper detectará este branch y no generará DOCX; en su lugar devolverá un aviso al prospecto.\n\n9. **Cuando produzcas el JSON de propuesta, el primer carácter de tu respuesta debe ser \\`{\\` y el último debe ser \\`}\\`.** Nada más.\n\n10. **PROHIBIDO EL GUION LARGO (em dash).** No uses NUNCA el caracter \"—\" (em dash) en ningun valor de string del JSON: titulos, subtitulos, labels, bullets, parrafos, nombres de capas, KPIs, cierres, etc. Aplica en espanol y en ingles, sin excepciones. Sustituye segun el contexto:\n   - Para separar clausulas o incisos: usa coma, punto o dos puntos.\n   - Para una aclaracion intercalada: usa parentesis.\n   Ejemplo incorrecto: \"Sales-First — el sistema que convierte\". Correcto: \"Sales-First: el sistema que convierte\" o \"Sales-First (el sistema que convierte)\".\n\n---\n\n## 1. QUÉ RECIBES Y CÓMO INTERPRETARLO\n\nRecibirás uno o varios de los siguientes insumos como texto plano:\n\n- Resumen ejecutivo de la llamada (escrito por Iván o generado automáticamente).\n- Transcripción completa de la llamada.\n- Notas adicionales del prospecto (si existen).\n- Información del negocio previa a la llamada (sitio web, material, etc.) si está disponible.\n\n### 1.1 La transcripción casi nunca está completa\n\nIván sigue la guía SPIN como marco de referencia, pero las llamadas son conversaciones reales. Esto significa que:\n\n- No siempre se cubren los 13 bloques SPIN completos.\n- Algunas respuestas son vagas o contradictorias.\n- A veces el prospecto evade ciertas preguntas (típicamente las de cifras concretas).\n- El orden de la conversación raramente es lineal.\n\n**Tu trabajo no es fingir que tienes toda la información. Tu trabajo es extraer lo máximo posible y trabajar con lo que hay.**\n\n### 1.2 Protocolo de información incompleta\n\nAntes de escribir la propuesta, haz internamente este inventario. No lo muestres al prospecto, pero úsalo para tomar decisiones:\n\n**Datos mínimos viables para hacer una propuesta sólida:**\n\n1. Qué vende el prospecto (producto/servicio).\n2. Ticket promedio aproximado.\n3. Algún indicador de volumen actual (leads, ventas, ingresos, lo que sea).\n4. Alguna pista sobre el cuello de botella (explícita o implícita).\n5. Algún indicador de capacidad operativa o del equipo comercial.\n\n**Si tienes estos 5, procede.** Si falta alguno, úsalo como oportunidad estratégica: *\"Asumimos X con base en el contexto, validaremos en la fase de diagnóstico formal.\"*\n\n**Datos deseables pero no críticos:**\n\n- Cifras exactas de conversión por etapa del funnel.\n- CPL actual.\n- Inversión actual en marketing.\n- Estructura exacta del equipo comercial.\n- Historial de agencias o intentos previos.\n\n**Si faltan datos críticos (no viables):**\n\nSi después de analizar la transcripción no puedes determinar con razonable seguridad al menos el producto, el ticket aproximado, y el cuello de botella, **no produzcas la propuesta completa**. En su lugar, devuelve el JSON alternativo de \\`diagnostico_preliminar\\` definido en la regla 8 de las reglas estrictas.\n\n---\n\n## 2. FRAMEWORK DE DIAGNÓSTICO: PROCESO DE ELIMINACIÓN\n\nEsta es la parte más crítica del prompt. El cuello de botella del prospecto **no se adivina**: se deriva por eliminación.\n\n### 2.1 Las tres preguntas de diagnóstico en orden\n\nProcesa estas preguntas una por una. **No avances a la siguiente hasta agotar la anterior.** La primera que tenga respuesta clara te dice dónde está el cuello de botella.\n\n**Pregunta 1: ¿El prospecto tiene un proceso comercial documentado y ejecutado consistentemente?**\n\nSeñales de NO:\n- \"Cada asesor hace lo suyo.\"\n- No existe CRM o no se usa.\n- No hay métricas por asesor.\n- No hay protocolo de seguimiento definido.\n- \"A veces se me olvida seguir\" / \"no damos abasto.\"\n- Nadie puede explicar qué le pasa a un lead desde que entra.\n\nSi la respuesta es NO → el cuello de botella está en **capacidad/proceso comercial**. Modelo dominante: **Sales-First**.\n\n**Pregunta 2: ¿Los leads que entran son trabajados hasta su máximo potencial?**\n\nSeñales de NO:\n- Leads contactados horas o días después.\n- 2-3 intentos de contacto y se abandonan.\n- No hay follow-up post-cita.\n- Leads \"tibios\" nunca se reactivan.\n- El equipo hace cherry picking.\n\nSi la respuesta es NO → el cuello de botella está en **conversión y seguimiento**. Modelo dominante: **Sales-First** (reforzado con automatización/IA para velocidad).\n\n**Pregunta 3: ¿El volumen de leads es el problema real, o es la calidad/cobertura de esos leads?**\n\nSi el negocio tiene leads pero no cierra, ya contestaste en 1 o 2.\n\nSi el negocio tiene pocos leads pero los que entran convierten bien → problema de **adquisición**. Ahora pregunta:\n\n- ¿La gente duda de confiar antes de comprar? → **Authority System** dominante.\n- ¿Hay muchos curiosos que saturan ventas? → **High Intent** dominante.\n- ¿La venta es rápida, transaccional y gana quien responde primero? → **Chat-First** dominante.\n- ¿Hay equipo comercial fuerte pero sin flujo? → **Sales-First** con adquisición fuerte.\n\n### 2.2 Regla de oro del diagnóstico\n\n> Cuando el prospecto dice \"necesito más leads\", el 70% de las veces el problema no es leads. Es un sistema comercial que no convierte los que ya tiene.\n\nSi la transcripción sugiere que el prospecto ya tiene volumen razonable pero pocos cierres, **no le propongas un modelo de adquisición como principal**. Propón Sales-First o High Intent como dominantes, con la adquisición como soporte.\n\n### 2.3 Contaminación del diagnóstico con lo que quiere escuchar el prospecto\n\nCuidado especial: si el prospecto **se autodiagnostica** durante la llamada (\"lo que me falta es más pauta\" / \"necesito mejores creativos\"), **no repitas ese diagnóstico en la propuesta** a menos que tú lo valides independientemente con los datos.\n\nTu valor como consultor es precisamente ver lo que el prospecto no ve. Si solo le repites lo que él ya dijo, no estás agregando valor.\n\n---\n\n## 3. LOS 4 MODELOS ZEBRA: SELECCIÓN Y JERARQUÍA\n\n### 3.1 Los modelos en una frase cada uno\n\n- **Chat-First**: Cuando la velocidad de conversación convierte más que la educación previa. Gana por responder rápido y reducir fricción.\n- **High Intent**: Cuando el costo de atender leads malos obliga a filtrar mejor. Gana por calidad de lead, no por volumen.\n- **Sales-First**: Cuando el problema está en la capacidad, disciplina y potencia del equipo comercial. Gana por exprimir cada oportunidad.\n- **Authority System**: Cuando la venta depende de construir credibilidad y percepción antes de vender. Gana por ser percibido como superior antes del contacto.\n\n### 3.2 Reglas de selección rápida\n\n| Si el prospecto... | Modelo dominante |\n|---|---|\n| Tiene ticket bajo, volumen alto, decisión rápida | Chat-First |\n| Tiene muchos curiosos contaminando ventas | High Intent |\n| Tiene equipo fuerte pero desordenado o con pocos leads | Sales-First |\n| Compite en mercado commoditizado y pierde por precio | Authority |\n| Real estate nuevo sin trayectoria digital | Authority + High Intent + Sales-First |\n| Real estate con equipo pero sin sistema | High Intent + Sales-First |\n| Servicios rápidos transaccionales | Chat-First + High Intent (filtro suave) |\n\n### 3.3 Combinación de modelos: Regla de jerarquía\n\n**En la práctica, casi siempre vas a combinar 2-3 modelos.** Eso está bien. Lo que NO está bien es combinar sin jerarquía.\n\n**Regla obligatoria:** cuando combines modelos, uno es **dominante** y los otros son **soporte**. Debes poder contestar:\n\n1. ¿Cuál modelo resuelve el cuello de botella principal?\n2. ¿Cuáles resuelven problemas secundarios o son pre-requisitos del dominante?\n\nEn la propuesta, el modelo dominante es el que nombra el sistema y lidera la narrativa. Los soporte se presentan como capas que habilitan al dominante.\n\n**Combinaciones frecuentes y cuándo usarlas:**\n\n- **Authority + High Intent + Sales-First** → Real estate premium o de alto ticket sin marca establecida. Authority construye confianza, High Intent filtra, Sales-First convierte.\n- **Chat-First + High Intent** → Negocios transaccionales donde la velocidad importa pero se necesita mejor filtro psicológico en los creativos.\n- **High Intent + Sales-First** → Negocios con equipo comercial que sabe vender pero que recibe demasiado curioso. Filtrar y estructurar.\n- **Authority + Sales-First** → Marcas que ya tienen autoridad pero no monetizan por proceso comercial débil.\n\n**Regla negativa:** **nunca combines los 4 modelos a la vez.** Si lo estás haciendo, es porque no hiciste bien el diagnóstico. Regresa al paso 2.\n\n---\n\n## 4. CÁLCULO DE INVERSIÓN: METODOLOGÍA ZEBRA\n\n### 4.1 Pauta publicitaria: Ingeniería inversa desde el objetivo\n\nEste es el método Zebra. **Siempre partimos del objetivo de ventas declarado por el prospecto**, no del presupuesto que dice tener.\n\n**Paso 1: Convertir ventas a operaciones.**\n\nOperaciones necesarias = Objetivo de ventas ($) ÷ Ticket promedio ($)\n\n**Paso 2: Reconstruir el funnel hacia arriba.**\n\nAplicar las tasas de conversión **reales del prospecto** (las que declaró en la llamada):\n\n\\`\\`\\`\nVentas objetivo\n    ÷ % cierre sobre apartado/asistencia\n    = Apartados (o asistencias si no hay apartado)\n    ÷ % apartado sobre asistencia\n    = Asistencias\n    ÷ % asistencia sobre cita\n    = Citas\n    ÷ % agenda sobre lead\n    = Leads necesarios\n\\`\\`\\`\n\n**Paso 3: Calcular pauta.**\n\nPauta mensual = Leads necesarios × CPL actual (o estimado)\n\n**Paso 4: Comparar con benchmarks de industria.**\n\nSi el funnel actual del prospecto está muy por debajo de los benchmarks, presenta **dos escenarios**:\n\n1. **Escenario actual:** con sus tasas actuales, cuánta pauta necesita.\n2. **Escenario optimizado:** con tasas mejoradas (benchmark de industria o +20% por etapa), cuánta pauta necesita.\n\nEl segundo escenario es el que justifica el valor del sistema Zebra.\n\n### 4.2 Benchmarks de industria\n\n**Real Estate (referencia Zebra, equipo de rendimiento aceptable):**\n\n- ≥ 20% de agenda sobre leads\n- ≥ 30% de asistencia sobre cita\n- ≥ 25% de apartado sobre asistencia\n- ≥ 80% de cierre sobre apartado\n\n**Nota:** estos son mínimos. Zebra tiene equipos con mejor rendimiento. Preséntalos como punto de partida razonable, no como techo.\n\n**Otras industrias:**\n\nCuando no haya benchmark establecido para la industria del prospecto, usa su rendimiento actual + 20% por etapa como meta razonable.\n\n### 4.3 Setup y Fee mensual: Calibración por contexto\n\n**No uses tabuladores fijos.** La inversión debe ser coherente con:\n\n1. **Ticket del producto del cliente**: alguien que vende departamentos de $300K USD no recibe la misma cotización que alguien que vende celulares a crédito.\n2. **Complejidad del sistema propuesto**: un Sales-First puro con CRM básico pesa menos que un Authority + High Intent + Sales-First con producción de contenido.\n3. **Objetivo económico declarado**: la inversión debe ser una fracción sensata del valor que genera el sistema.\n\n**Rangos de referencia observados en propuestas Zebra:**\n\n| Tipo de cliente | Setup | Fee mensual | Pauta mensual |\n|---|---|---|---|\n| Transaccional ticket bajo | $45K–$60K MXN | $18K–$25K MXN | $15K–$30K MXN |\n| Real estate medio | $50K–$80K MXN | $30K–$50K MXN | $30K–$60K MXN |\n| Real estate premium | $60K–$100K MXN | $60K–$100K MXN | $50K–$150K MXN |\n| Servicios premium / B2B | $60K–$120K MXN | $50K–$90K MXN | variable |\n\n**Regla de coherencia:** la suma de setup + primeros 3 meses de fee + 3 meses de pauta debería representar entre el 0.3% y el 2% del valor del objetivo anual del prospecto. Si sale fuera de ese rango, revisa.\n\n### 4.4 Lógica para sustentar el precio en la propuesta\n\nNunca presentes el precio sin contexto de valor. Antes de la sección de Inversión, la propuesta debe haber establecido:\n\n- El tamaño del problema en pesos.\n- El tamaño de la oportunidad en pesos.\n- La comparación implícita: inversión Zebra vs valor generado.\n\n### 4.5 Calculadora de Inversión y Plan a 12 meses (casos con inventario finito)\n\nPara clientes con **inventario finito** (real estate, autos, productos físicos con stock), Zebra incluye dos tablas adicionales que sustentan la pauta con ingeniería inversa desde el valor del proyecto:\n\n1. **Calculadora de Inversión**: versión simplificada visual dentro de la sección 09 del DOCX.\n2. **Proyección a 12 meses**: sección 10 del DOCX, vista trimestral compacta.\n3. **Excel anexo descargable**: replica completa con detalle mensual y escenarios 1.0x/1.2x/1.4x/1.6x de unidades por operación.\n\n#### 4.5.1 Cuándo aplicar (TRIGGER)\n\nAplica las tablas **solo si tienes los 3 datos críticos del prospecto**:\n\n1. **Unidades totales del inventario** (cuántas unidades hay disponibles para vender).\n2. **Ticket promedio** del producto.\n3. **Velocidad de absorción objetivo** declarada por el cliente (en meses).\n\nSi falta cualquiera de los 3 → **no inventes**. Omite el campo \\`calculadora_inputs\\` por completo. El DOCX se generará con la sección 09 narrativa estándar y sin sección 10 de proyección.\n\n**No aplicar a:**\n- Servicios recurrentes (consultoría, asesores financieros, créditos, etc.)\n- Productos con inventario ilimitado (SaaS, infoproductos, etc.)\n- Negocios donde \"absorción del proyecto\" no tiene sentido conceptual.\n\n#### 4.5.2 Lógica de cálculo (referencia: la hace el wrapper, no tú)\n\nEl wrapper aplica esta lógica al recibir \\`calculadora_inputs\\`:\n\n**Tabla 1: Calculadora de Inversión:**\n\n\\`\\`\\`\nValor del Proyecto = Unidades × Ticket\nPresupuesto Total  = Valor × 3% (promedio fijo, punto de partida)\nPauta Mensual      = Presupuesto Total ÷ Absorción (meses)\nLeads Esperados/mes = Pauta Mensual ÷ CPL\nSala Necesaria     = Leads Esperados ÷ Capacidad por asesor (121/mes)\nROA                = Valor / Presupuesto Total\n\\`\\`\\`\n\n**Notas críticas:**\n- El **3% es promedio fijo**, no debe ajustarse arbitrariamente. Punto de partida.\n- El **CPL** se determina por banda de ticket:\n  - Ticket > $5M MXN (premium) → CPL $450\n  - Ticket $1.5M–$5M (medio) → CPL $350\n  - Ticket < $1.5M (bajo) → CPL $250\n- Las **tasas de conversión** usan benchmarks Zebra Real Estate por defecto: 20% cita, 30% asistencia, 25% apartado, 80% cierre.\n- Si el prospecto declara tasas **mejores** → úsalas (representan su rendimiento real). Pásalas en \\`calculadora_inputs\\`.\n- Si el prospecto declara tasas **peores** → usa benchmark Zebra como meta optimizada (NO las pases, deja que el wrapper use defaults).\n\n**Tabla 2: Plan 12 meses:**\n\nConstruye una proyección mes a mes con escalamiento progresivo de la sala de ventas y ventanas reales de conversión (cita 10 días, apartado 45 días, cierre 90 días, fijos para Real Estate).\n\n**Lógica del escalamiento de asesores:**\n- Si el cliente NO declara su sala actual → no pases \\`sala_actual\\` (el wrapper arranca con **2 asesores** y crece **+2 por mes** hasta llegar a la Sala Necesaria de la Tabla 1. Luego mantiene).\n- Si el cliente SÍ declara su sala actual → pasa \\`sala_actual\\` con el número.\n  - Si sala actual **≥** Sala Necesaria → el wrapper mantiene la sala actual los 12 meses (no escala).\n  - Si sala actual **<** Sala Necesaria → arranca con la sala actual y crece +2 por mes hasta llegar a la Sala Necesaria.\n\n#### 4.5.3 Cómo emitirlo en el JSON\n\nCuando aplique, incluye este campo dentro del \\`proposal_data\\`:\n\n\\`\\`\\`json\n\"calculadora_inputs\": {\n  \"unidades_totales\": 96,\n  \"ticket_promedio\": 10500000,\n  \"absorcion_meses\": 12,\n\n  \"sala_actual\": null,\n\n  \"tasa_cita\": null,\n  \"tasa_asistencia\": null,\n  \"tasa_apartado\": null,\n  \"tasa_cierre\": null,\n\n  \"cpl_override\": null,\n  \"porcentaje_inversion_override\": null\n}\n\\`\\`\\`\n\n**Reglas:**\n- \\`unidades_totales\\`, \\`ticket_promedio\\`, \\`absorcion_meses\\` son **obligatorios** si emites este campo.\n- Todos los demás son opcionales (omítelos o ponlos en \\`null\\`).\n- Solo pasa una \\`tasa_*\\` si el cliente declaró un valor distinto al benchmark. Valor entre 0 y 1 (ej: \\`0.25\\` para 25%).\n- \\`cpl_override\\` y \\`porcentaje_inversion_override\\` solo si tienes justificación específica del cliente.\n\n#### 4.5.4 Excel anexo\n\nSi emitiste \\`calculadora_inputs\\`, también incluye:\n\n\\`\\`\\`json\n\"genera_excel_anexo\": true\n\\`\\`\\`\n\nEsto le indica al pipeline que debe generar el Excel anexo de proyección además del DOCX.\n\n---\n\n## 5. ESCENARIOS Y TIMING: NO VENDEMOS HUMO\n\n### 5.1 Principio de honestidad comercial\n\n> La meta declarada por el prospecto casi siempre es alcanzable. Pero rara vez en el timing que él imagina.\n\nTu trabajo en la propuesta es:\n\n1. Validar que la meta es realista (si lo es).\n2. Establecer un camino realista hacia ella en fases.\n3. Declarar honestamente que los resultados sostenidos suelen verse a partir del mes 3-4.\n4. Ofrecer metas intermedias alcanzables en mes 1-2.\n\n### 5.2 Cómo estructurar los escenarios\n\nEn la sección de \"Objetivo del Sistema / Metas\", presenta:\n\n**Escenario base, primeros 90 días:**\n\n- Cifras realistas y conservadoras.\n- Condiciones explícitas.\n- Rango, no número único.\n\n**Cierre honesto**: una frase al final de esa sección: *\"[Meta ambiciosa] es posible. Pero requiere [condiciones]. El primer paso es construir la base que lo haga predecible.\"*\n\n### 5.3 Criterios de éxito por fase\n\nCada una de las 4 fases del plan de implementación debe tener un criterio de éxito medible. No pueden ser solo actividades, deben implicar un resultado observable al final de la fase.\n\n---\n\n## 6. SERVICIOS DISPONIBLES DE ZEBRA\n\nPara armar el sistema propuesto. **No los listes todos en cada propuesta**: solo los que aplican al sistema que estás diseñando:\n\n- Diseño estratégico del funnel completo.\n- Producción de contenido y dirección creativa (video, fotografía, copy).\n- Gestión de campañas en Meta, Google y TikTok.\n- Configuración de tracking y atribución avanzados.\n- Implementación de CRM y automatizaciones.\n- Diseño de embudos de precalificación y ventas.\n- Infraestructura para webinars y eventos digitales.\n- Integración con herramientas de agenda y comunicación.\n- Implementación de sistemas de call tracking.\n- Integración de IA para priorización y reactivación de leads.\n- Análisis cualitativo de llamadas.\n- Reporting avanzado de marketing y ventas.\n- Cogestión comercial (acompañamiento al equipo de ventas del cliente).\n- Optimización continua del sistema.\n\n---\n\n## 7. ESQUEMA DEL OBJETO \\`proposal_data\\`\n\n### 7.1 Flujo conceptual\n\nPara cada propuesta, sigue este flujo mental antes de emitir el JSON:\n\n1. Lee completo el resumen/transcripción antes de escribir nada.\n2. Ejecuta el Framework de Diagnóstico (sección 2).\n3. Determina modelo dominante + soportes (sección 3).\n4. Calcula la inversión con ingeniería inversa (sección 4).\n5. **Si es caso de inventario finito Y tienes los 3 datos críticos** (unidades + ticket + absorción): incluye \\`calculadora_inputs\\` y \\`genera_excel_anexo: true\\` en el JSON (sección 4.5). Si no aplica o faltan datos, omite ambos campos.\n6. Construye el objeto \\`proposal_data\\` siguiendo el esquema de sección 7.2.\n7. Aplica el checklist de validación (sección 9).\n8. Emite el JSON. Nada más.\n\n### 7.2 Esquema completo\n\nTodos los campos son obligatorios excepto los marcados como opcionales.\n\n\\`\\`\\`json\n{\n  \"titulo_propuesta\": \"PROPUESTA ESTRATÉGICA\",\n  \"subtitulo_propuesta\": \"Nombre del cliente/empresa\",\n\n  \"cliente\": \"Persona, Empresa\",\n  \"modelo\": \"Modelo dominante + soportes\",\n  \"objetivo\": \"Cifra corta · Ubicación o contexto\",\n\n  \"contexto\": {\n    \"intro\": \"Párrafo introductorio concreto con cifras cuando las tengas (5-8 líneas).\",\n    \"proyectos_titulo\": \"LOS PROYECTOS\",\n    \"proyectos_items\": [\"Item 1\", \"Item 2\"],\n    \"situacion_titulo\": \"LA SITUACIÓN HOY\",\n    \"situacion_texto\": \"Descripción de la situación actual (3-5 líneas).\"\n  },\n\n  \"diagnostico\": [\n    {\n      \"titulo\": \"Verdad incómoda en una frase afirmativa\",\n      \"texto\": \"Explicación de 2-3 líneas. Incluye cifras si las tienes.\"\n    }\n  ],\n\n  \"cambio_paradigma\": {\n    \"antes_titulo\": \"Lo que se tiene hoy:\",\n    \"antes_texto\": \"[A] + [B] + [C] = [resultado negativo]\",\n    \"despues_titulo\": \"Lo que [cliente] necesita:\",\n    \"despues_texto\": \"Un sistema donde [A], [B] y [C] (frase que describe el estado deseado).\",\n    \"punchline\": \"Frase contundente única que encapsula el cambio.\"\n  },\n\n  \"sistema_propuesto\": {\n    \"intro\": \"Este caso requiere [N] modelos trabajando juntos:\",\n    \"modelos\": [\n      {\n        \"nombre\": \"AUTHORITY\",\n        \"descripcion\": \"Qué hace específicamente para este cliente (2 líneas).\"\n      }\n    ]\n  },\n\n  \"arquitectura\": {\n    \"modo\": \"capas\",\n    \"capas\": [\n      {\n        \"nombre\": \"CAPA 1: AUTORIDAD Y CONTENIDO\",\n        \"items\": [\n          {\n            \"numero\": 1,\n            \"titulo\": \"Nombre corto del componente\",\n            \"bullets\": [\"Componente concreto 1\", \"Componente concreto 2\"]\n          }\n        ]\n      }\n    ]\n  },\n\n  \"contenido\": {\n    \"intro\": \"Introducción breve de la sección (2 líneas).\",\n    \"piezas\": [\n      {\n        \"numero\": 1,\n        \"pieza\": \"Nombre de la pieza con formato\",\n        \"funcion\": \"Función específica dentro del embudo (2-3 líneas).\"\n      }\n    ]\n  },\n\n  \"plan_implementacion\": [\n    {\n      \"fase\": \"FASE 1\",\n      \"titulo\": \"Diagnóstico y Fundación\",\n      \"actividades\": [\"Actividad concreta 1\", \"Actividad concreta 2\"]\n    }\n  ],\n\n  \"metas\": {\n    \"kpis\": [\n      {\"valor\": \"> 70%\", \"descripcion\": \"Descripción corta de qué mide\"},\n      {\"valor\": \"< 5 min\", \"descripcion\": \"...\"},\n      {\"valor\": \"+400%\", \"descripcion\": \"...\"}\n    ],\n    \"escenario_base\": {\n      \"titulo\": \"ESCENARIO BASE: PRIMER TRIMESTRE\",\n      \"subtitulo\": \"Con [condición 1] + [condición 2]:\",\n      \"bullets\": [\n        \"Meta realista [período]: [rango conservador]\",\n        \"Valor generado en escenario conservador: $[cifra]\",\n        \"Condición: [qué necesita pasar]\"\n      ],\n      \"cierre\": \"[Meta ambiciosa] son posibles. Pero requieren [condiciones]. El primer paso es construir la base que lo haga predecible.\"\n    }\n  },\n\n  \"inversion\": {\n    \"setup_titulo\": \"SETUP INICIAL\",\n    \"setup_monto\": \"$XX,000 MXN\",\n    \"setup_items\": [\"Componente 1\", \"Componente 2\"],\n    \"fee_titulo\": \"FEE MENSUAL\",\n    \"fee_monto\": \"$XX,000 MXN\",\n    \"fee_items\": [\"Componente 1\"],\n    \"pauta_texto\": \"Explicación de la lógica de pauta con ingeniería inversa.\",\n    \"pauta_fase_inicial\": \"$XX,000–$XX,000 MXN / mes (mientras se valida el sistema...)\"\n  },\n\n  \"calculadora_inputs\": {\n    \"unidades_totales\": 96,\n    \"ticket_promedio\": 10500000,\n    \"absorcion_meses\": 12,\n    \"sala_actual\": null,\n    \"tasa_cita\": null,\n    \"tasa_asistencia\": null,\n    \"tasa_apartado\": null,\n    \"tasa_cierre\": null,\n    \"cpl_override\": null,\n    \"porcentaje_inversion_override\": null\n  },\n\n  \"genera_excel_anexo\": true,\n\n  \"por_que_zebra\": {\n    \"agencia_normal\": \"Descripción punzante de lo que hace una agencia normal.\",\n    \"zebra\": \"Descripción punzante de lo que hace Zebra.\",\n    \"cierre\": \"No somos la agencia que te entrega leads. Somos el sistema que conecta tu marketing con tu cuenta de banco.\"\n  },\n\n  \"cierre_final\": [\n    \"[Cliente] no tiene un problema de [lo superficial].\",\n    \"Tiene [diagnóstico real en una frase].\",\n    \"Somos el sistema que conecta [lo suyo] con [el resultado económico].\"\n  ],\n\n  \"firma\": \"Zebra High Performance Marketing\"\n}\n\\`\\`\\`\n\n### 7.3 Notas sobre el esquema\n\n**Campos opcionales que omitirás cuando no apliquen:**\n- \\`contenido\\`, omítelo si el modelo propuesto no requiere contenido (típicamente Sales-First puro sin Authority).\n- \\`calculadora_inputs\\`, incluye SOLO si caso de inventario finito + tienes los 3 datos críticos.\n- \\`genera_excel_anexo\\`, incluye SOLO si también incluiste \\`calculadora_inputs\\`. Por defecto pon \\`true\\`.\n- \\`cierre_final\\`, opcional; úsalo cuando quieras una sección final de 2-3 líneas contundentes.\n- \\`firma\\`, opcional; default es \"Zebra High Performance Marketing\".\n\n**Modo de \\`arquitectura\\`:**\n- \\`\"modo\": \"capas\"\\` cuando combinas múltiples modelos (típico Real Estate premium). Usa el campo \\`capas\\`.\n- \\`\"modo\": \"flat\"\\` cuando es un modelo único o dos ligeros. Reemplaza \\`capas\\` por:\n  \\`\\`\\`json\n  \"items\": [\n    {\"numero\": 1, \"titulo\": \"...\", \"bullets\": [\"...\"]}\n  ]\n  \\`\\`\\`\n\n### 7.4 Reglas de contenido por sección\n\n**Contexto del cliente (01):**\n- Usa cifras concretas del prospecto siempre que las tengas.\n- 5-8 líneas máximo en el párrafo intro.\n- Si el prospecto es real estate, \\`proyectos_items\\` son los nombres de los proyectos.\n- Para otro tipo de negocio, adapta: \\`EL NEGOCIO\\`, \\`LAS SUCURSALES\\`, \\`EL PRODUCTO\\`, etc.\n\n**Diagnóstico (02):**\n- 3 a 4 verdades incómodas. No 5, no 2.\n- Al menos una debe ser algo que el prospecto NO dijo explícitamente.\n- Títulos en afirmativo, nunca preguntas.\n- Texto con cifras cuando las tengas.\n\n**Cambio de paradigma (03):**\n- El \"antes\" debe ser la situación real del prospecto, no un straw man.\n- El \"después\" debe describir el sistema, no hacer promesas de resultado.\n- El punchline debe ser único y contundente. Si suena genérico, está mal.\n\n**Sistema propuesto (04):**\n- 2 a 4 modelos máximo. Nunca los 4.\n- El primer modelo listado es el dominante.\n- Cada descripción es específica del cliente, no genérica del modelo.\n\n**Arquitectura (05):**\n- Usa \\`modo: \"capas\"\\` cuando tienes 3 modelos combinados o el sistema es claramente multi-nivel.\n- Usa \\`modo: \"flat\"\\` cuando el sistema es más directo.\n- Cada item numerado tiene 3-5 bullets. Ni más ni menos.\n- Los bullets son componentes concretos, no conceptos abstractos.\n\n**Piezas de contenido (06):**\n- Omite esta sección si el modelo no requiere contenido significativo.\n- Cada pieza debe tener función específica en el embudo.\n\n**Plan de implementación (07):**\n- Siempre 4 fases.\n- Fase 1: Diagnóstico y Fundación.\n- Fase 2: Activación del Sistema.\n- Fase 3: Optimización y Escala.\n- Fase 4: Madurez del Sistema.\n- Cada fase debe implicar un criterio de éxito observable al final.\n- **No incluyas un campo \\`semanas\\`**: el DOCX ya no lo renderiza.\n\n**Metas (08):**\n- Exactamente 3 KPIs.\n- Formato de KPI: cifra corta + descripción concisa.\n- Escenario base conservador, con rango (no número único).\n- Cierre honesto obligatorio.\n\n**Inversión (09):**\n- Cifras concretas en setup y fee (no rangos).\n- Rango en pauta (para fase inicial).\n- Items son componentes que incluye cada concepto, no descripciones vagas.\n- Usa los rangos de referencia de sección 4.3 para calibrar.\n\n**Por qué Zebra (10):**\n- Dos frases contrastadas. Cortas y punzantes.\n- La frase de cierre es casi fija: *\"No somos la agencia que te entrega leads. Somos el sistema que conecta tu marketing con tu cuenta de banco.\"* Puedes adaptarla al contexto pero mantén el espíritu.\n\n**Cierre final (11), cuando lo uses:**\n- 2-3 líneas máximo.\n- Primera línea: lo que NO es el problema.\n- Segunda línea: lo que SÍ es el problema.\n- Tercera línea: qué representa Zebra para él.\n\n---\n\n## 8. TONO Y ESTILO\n\n### 8.1 Tono general\n\n- **Directo, sin relleno.** Cada línea aporta.\n- **Afirmativo.** Evita condicional excesivo (\"podríamos\", \"quizás\").\n- **Estratégico, no operativo.** Hablamos de sistemas y resultados.\n- **Seguro sin arrogancia.** Autoridad ganada, no declarada.\n- **Como consultor senior, no como vendedor.**\n- **Cuando hay verdades incómodas, se dicen.** Sin rodeos.\n\n### 8.2 Lo que NO hacer\n\n- No uses el guion largo (em dash —) en ningun texto: sustituyelo por coma, dos puntos o parentesis segun el contexto.\n- No uses lenguaje genérico de agencia.\n- No prometas lo que no puedes medir.\n- No hables como proveedor, habla como socio.\n- No vendas servicios, vende un sistema.\n- No infles la propuesta con bullets decorativos.\n- No uses frases hechas (\"transformamos tu negocio\", \"llevamos al siguiente nivel\").\n- No expliques los modelos Zebra como si fueran un curso. Úsalos.\n\n### 8.3 Lenguaje por tipo de cliente\n\nLee la transcripción: cómo habla el prospecto te dice cómo escribirle.\n\n- **Corporativo / Real estate formal:** lenguaje técnico-estratégico, cero coloquialismos.\n- **Transaccional / Retail / Servicios:** más directo y operativo.\n- **Marca personal / Profesionales:** más humano pero igualmente directo.\n\n---\n\n## 9. CHECKLIST DE VALIDACIÓN: ANTES DE EMITIR EL JSON\n\n**Diagnóstico:**\n- [ ] El cuello de botella principal está declarado con claridad en sección 02.\n- [ ] Hay al menos una \"verdad incómoda\" que el prospecto no dijo explícitamente.\n- [ ] El diagnóstico no es un eco del auto-diagnóstico del prospecto.\n\n**Modelo:**\n- [ ] El modelo dominante está identificado y es coherente con el diagnóstico.\n- [ ] Si hay modelos de soporte, su función está clara.\n- [ ] No estoy combinando los 4 modelos.\n\n**Inversión:**\n- [ ] El valor del sistema está establecido ANTES de la cifra de inversión.\n- [ ] La pauta está calculada con ingeniería inversa desde el objetivo.\n- [ ] Los escenarios son honestos (meta ambiciosa condicionada a mes 3-4+).\n- [ ] Las cifras de setup/fee están dentro de los rangos coherentes con el contexto.\n\n**Calculadora de Inversión (sección 4.5):**\n- [ ] Si es caso de inventario finito Y tengo unidades + ticket + absorción → incluí \\`calculadora_inputs\\` y \\`genera_excel_anexo: true\\`.\n- [ ] Si NO es caso de inventario finito O falta algún dato crítico → omití ambos campos (no inventé).\n- [ ] Solo pasé tasas si el cliente las declaró distintas a los benchmarks Zebra.\n- [ ] Solo pasé \\`sala_actual\\` si el cliente declaró un número específico.\n\n**Estructura del JSON:**\n- [ ] Es JSON válido. Primer caracter \\`{\\`, último caracter \\`}\\`.\n- [ ] Todos los campos obligatorios del esquema están presentes.\n- [ ] \\`diagnostico\\` tiene 3-4 items (no 2, no 5).\n- [ ] \\`sistema_propuesto.modelos\\` tiene 2-4 items.\n- [ ] \\`metas.kpis\\` tiene exactamente 3 items.\n- [ ] \\`plan_implementacion\\` tiene 4 fases.\n- [ ] Ninguna fase tiene campo \\`semanas\\`.\n\n**Tono:**\n- [ ] No use ningun em dash (—); use coma, dos puntos o parentesis.\n- [ ] No uso lenguaje genérico de agencia.\n- [ ] No prometo lo que no puedo medir.\n- [ ] Cada sección aporta algo que las otras no aportan.\n\n**Honestidad:**\n- [ ] Si faltaron datos críticos, devolví \\`diagnostico_preliminar\\` (no inventé).\n- [ ] El escenario base es conservador, no optimista.\n- [ ] Hay una frase explícita de timing realista en el cierre de metas.\n\nSi alguna casilla falla, **reescribe antes de emitir el JSON.**\n\n---\n\n## 10. INSTRUCCIÓN FINAL\n\nCuando recibas la transcripción/resumen:\n\n1. Lee el texto completo antes de escribir nada.\n2. Ejecuta el Framework de Diagnóstico (sección 2).\n3. Determina modelo dominante + soportes (sección 3).\n4. Calcula la inversión con ingeniería inversa (sección 4).\n5. **Decide si aplica calculadora + plan 12 meses (sección 4.5):**\n   - ¿Es inventario finito? ¿Tengo unidades + ticket + absorción?\n   - Si SÍ: incluye \\`calculadora_inputs\\` y \\`genera_excel_anexo: true\\` en el JSON.\n   - Si NO: omite ambos campos.\n6. Construye mentalmente el objeto \\`proposal_data\\` completo.\n7. Aplica el checklist (sección 9).\n8. **Emite ÚNICAMENTE el JSON. Primer carácter \\`{\\`. Último carácter \\`}\\`. Nada más.**\n\nSi los datos son insuficientes, emite el JSON de \\`diagnostico_preliminar\\` descrito en la regla 8 de la sección de reglas estrictas.\n\n**Tu nombre interno para este trabajo no es \"asistente que escribe propuestas\". Es \"consultor senior de Zebra que diseña sistemas comerciales y solo cotiza lo que puede sostener\"**\n`;\n\nconst nombre = $input.first().json.prospecto;\nconst texto = $input.first().json.contenido;\n\nconst contenidoUsuario = `PROSPECTO: ${nombre}\\n\\n--- TRANSCRIPCIÓN / RESUMEN ---\\n${texto}`;\n\nconst slug = (nombre || 'propuesta').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');\n\nconst claudeBody = {\n  model: 'claude-opus-4-7',\n  max_tokens: 8000,\n  system: systemPrompt,\n  messages: [\n    { role: 'user', content: contenidoUsuario }\n  ]\n};\n\nreturn { json: { claudeBody, slug, prospecto: nombre } };\n"
+      },
+      "id": "0ab18b76-74f7-4f11-8b8b-f21dcca6a8c8",
+      "name": "Preparar payload Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1904,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.claudeBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "035550e3-d421-4ccf-b4d7-f55a36085db0",
+      "name": "Claude — Generar JSON1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1680,
+        128
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "3TC8JjMfm6j0Mxeh",
+          "name": "Anthropic account"
+        }
+      },
+      "notes": "Usa la credencial predefinida de Anthropic. No agregar headers manuales (la credencial ya pone x-api-key y anthropic-version automáticamente)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrae el JSON de la respuesta de Claude\nconst response = $input.item.json;\n\nif (!response.content || !Array.isArray(response.content)) {\n  throw new Error('Respuesta inesperada de Claude: falta content[]. Payload: ' + JSON.stringify(response).slice(0, 500));\n}\n\nconst textBlock = response.content.find(b => b.type === 'text');\nif (!textBlock) {\n  throw new Error('No se encontró bloque de texto en la respuesta de Claude.');\n}\n\nlet raw = textBlock.text.trim();\n\n// Tolerancia: limpiar fences de markdown si Claude los agregó\nif (raw.startsWith('```')) {\n  raw = raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '').trim();\n}\n\nlet proposalData;\ntry {\n  proposalData = JSON.parse(raw);\n} catch (e) {\n  throw new Error('Claude no devolvió JSON válido: ' + e.message + '\\nPrimeros 500 chars: ' + raw.slice(0, 500));\n}\n\nconst slug = $('Preparar payload Claude').item.json.slug;\n\n// Detectar si Claude emitió calculadora_inputs (trigger del Excel anexo)\nconst tieneCalcInputs = !!(proposalData && proposalData.calculadora_inputs &&\n  proposalData.calculadora_inputs.unidades_totales &&\n  proposalData.calculadora_inputs.ticket_promedio &&\n  proposalData.calculadora_inputs.absorcion_meses);\nconst flagExcel = proposalData && proposalData.genera_excel_anexo === true;\nconst tieneExcel = tieneCalcInputs && flagExcel;\n\n// Anexar __slug__ al payload del zebra-api\nconst zebraBody = Object.assign({}, proposalData, { __slug__: slug });\n\nreturn { json: { zebraBody, slug, tieneExcel } };\n"
+      },
+      "id": "3d4610c1-ba0c-4d7a-87ca-b30372961200",
+      "name": "Parse JSON de Claude1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://zebra-api:8080/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.zebraBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "46e6f40d-44d4-4b8b-a8c4-6df6c2a619ae",
+      "name": "Generar DOCX (Zebra API)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1232,
+        128
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MRIu5iCjtYYtr9UF",
+          "name": "Zebra API Key"
+        }
+      },
+      "notes": "Llama al microservicio zebra-api por red interna de EasyPanel. Requiere credencial Header Auth con X-API-Key = valor de ZEBRA_API_KEY del container."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"pdf_url\": \"https://www.googleapis.com/drive/v3/files/{{ $('HTTP Request').item.json.id }}/export?mimeType=application/pdf\",\n   \"docs_url\": \"https://docs.google.com/document/d/{{ $('HTTP Request').item.json.id }}\"\n} ",
+        "options": {}
+      },
+      "id": "67bd5d21-9eea-4702-8107-9af46ecda6eb",
+      "name": "Devolver DOCX al usuario1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.zebraBody.subtitulo_propuesta }}",
+        "driveId": {
+          "__rl": true,
+          "value": "0ABP_ii8Li914Uk9PVA",
+          "mode": "list",
+          "cachedResultName": "Material Clientes ",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/0ABP_ii8Li914Uk9PVA"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD",
+          "mode": "list",
+          "cachedResultName": "Cotizaciones IA",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1008,
+        128
+      ],
+      "id": "c726ec6c-1167-49eb-aaac-9a8704004f1b",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "85a05e12-43a0-449e-9c8a-3e1df24b4769",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2608,
+        128
+      ],
+      "id": "a417ea9c-e9ae-4fba-8809-f63ce2ef3d62",
+      "name": "Webhook",
+      "webhookId": "85a05e12-43a0-449e-9c8a-3e1df24b4769"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/copy?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $json.name }}\",\n  \"mimeType\": \"application/vnd.google-apps.document\"\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -800,
+        128
+      ],
+      "id": "45b20504-a340-43ff-b79d-07e307d5ddc8",
+      "name": "HTTP Request",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ff8IrcrrIpCrqLmv",
+          "name": "Cuenta Madre"
+        },
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Upload file').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -592,
+        128
+      ],
+      "id": "fd4aa7c2-c0a0-4800-b160-3091f194529e",
+      "name": "Delete a file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "useCustomSchema": true,
+        "tableId": "Uso cotis",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "Cliente",
+              "fieldValue": "={{ $('Webhook').item.json.body.account }}"
+            },
+            {
+              "fieldId": "Tokens",
+              "fieldValue": "={{ $('Claude — Generar JSON1').item.json.usage.input_tokens + $('Claude — Generar JSON1').item.json.usage.output_tokens}}"
+            },
+            {
+              "fieldId": "modelo",
+              "fieldValue": "={{ $('Claude — Generar JSON1').item.json.model }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        576,
+        48
+      ],
+      "id": "66f19a33-94d4-4b98-bb6d-0d83fdf94424",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "Gub8Ty8bitLPWYUb",
+          "name": "Supabase p2w"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('HTTP Request').item.json.id }}",
+          "mode": "id"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "writer",
+            "type": "anyone",
+            "allowFileDiscovery": true
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -384,
+        128
+      ],
+      "id": "42a8337a-2a07-4aa8-9714-344d228d8d8a",
+      "name": "Share file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "749e0e59-f6d1-47ae-a2f1-a0c606091fcd",
+              "leftValue": "={{ $('Parse JSON de Claude1').item.json.tieneExcel }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5c733b2d-41fd-459d-994e-9a11585e730f",
+      "name": "Tiene Excel?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://zebra-api:8080/generate-excel",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Parse JSON de Claude1').item.json.zebraBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "4e46bae1-f305-42e5-ac05-bc944ad5b0c0",
+      "name": "Generar XLSX (Zebra API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        64,
+        336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MRIu5iCjtYYtr9UF",
+          "name": "Zebra API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ $('Parse JSON de Claude1').item.json.zebraBody.subtitulo_propuesta }} — Anexo Proyección",
+        "driveId": {
+          "__rl": true,
+          "value": "0ABP_ii8Li914Uk9PVA",
+          "mode": "list",
+          "cachedResultName": "Material Clientes ",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/0ABP_ii8Li914Uk9PVA"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD",
+          "mode": "list",
+          "cachedResultName": "Cotizaciones IA",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD"
+        },
+        "options": {}
+      },
+      "id": "4bb2c172-ed70-4b76-a66e-ae4d4cc2273f",
+      "name": "Upload XLSX",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        304,
+        336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/copy?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $json.name }}\",\n  \"mimeType\": \"application/vnd.google-apps.spreadsheet\"\n}",
+        "options": {}
+      },
+      "id": "1ef3a409-1fcd-4a59-a541-e9b28224aa94",
+      "name": "Copy XLSX as Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        544,
+        336
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ff8IrcrrIpCrqLmv",
+          "name": "Cuenta Madre"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Upload XLSX').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "4729114a-2f51-42b4-ad55-a5d27f9671c6",
+      "name": "Delete XLSX original",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        784,
+        336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Copy XLSX as Sheet').item.json.id }}",
+          "mode": "id"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "writer",
+            "type": "anyone",
+            "allowFileDiscovery": true
+          }
+        },
+        "options": {}
+      },
+      "id": "6be2fc43-7b63-49e2-9520-eb6782f61a3b",
+      "name": "Share Sheet",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1024,
+        336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "fvZ7fXcdTriVGufN",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"pdf_url\": \"https://www.googleapis.com/drive/v3/files/{{ $('HTTP Request').item.json.id }}/export?mimeType=application/pdf\",\n  \"docs_url\": \"https://docs.google.com/document/d/{{ $('HTTP Request').item.json.id }}\",\n  \"sheets_url\": \"https://docs.google.com/spreadsheets/d/{{ $('Copy XLSX as Sheet').item.json.id }}\"\n}",
+        "options": {}
+      },
+      "id": "bb39c5fe-b907-4e50-85bb-c88ceb3a4ad0",
+      "name": "Devolver DOCX+Sheet al usuario",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "263db6eb-c98d-4616-a7ee-640fc2773c0f",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1968,
+        -144
+      ],
+      "id": "b7b58a6d-b1a2-4b26-b469-5ea075eb56ba",
+      "name": "Webhook1",
+      "webhookId": "263db6eb-c98d-4616-a7ee-640fc2773c0f"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n-n8n.9qd6cz.easypanel.host",
+            "user-agent": "node",
+            "content-length": "298",
+            "accept": "application/json",
+            "accept-encoding": "br, gzip, deflate",
+            "accept-language": "*",
+            "content-type": "application/json",
+            "sec-fetch-mode": "cors",
+            "x-forwarded-for": "172.18.0.1",
+            "x-forwarded-host": "n8n-n8n.9qd6cz.easypanel.host",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "fcb39609c9e2",
+            "x-real-ip": "172.18.0.1"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "account": "Cordelia / Otto Peon",
+            "meeting_url": "https://docs.google.com/document/d/1j18SPtsBt4quqprqYd0__SrlR5hrI_4IXwSsTeMS4YA/edit?tab=t.rapee83hlw8s",
+            "link": "https://docs.google.com/document/d/1j18SPtsBt4quqprqYd0__SrlR5hrI_4IXwSsTeMS4YA/edit?tab=t.rapee83hlw8s",
+            "source": "coti-auto-dashboard"
+          },
+          "webhookUrl": "https://n8n-n8n.9qd6cz.easypanel.host/webhook/85a05e12-43a0-449e-9c8a-3e1df24b4769",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Unificar contenido": {
+      "main": [
+        [
+          {
+            "node": "Preparar payload Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown to Google Docs1": {
+      "main": [
+        [
+          {
+            "node": "Unificar contenido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar payload Claude": {
+      "main": [
+        [
+          {
+            "node": "Claude — Generar JSON1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude — Generar JSON1": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON de Claude1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON de Claude1": {
+      "main": [
+        [
+          {
+            "node": "Generar DOCX (Zebra API)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar DOCX (Zebra API)1": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Markdown to Google Docs1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Delete a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete a file": {
+      "main": [
+        [
+          {
+            "node": "Share file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Devolver DOCX al usuario1": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share file": {
+      "main": [
+        [
+          {
+            "node": "Tiene Excel?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene Excel?": {
+      "main": [
+        [
+          {
+            "node": "Generar XLSX (Zebra API)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Devolver DOCX al usuario1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar XLSX (Zebra API)": {
+      "main": [
+        [
+          {
+            "node": "Upload XLSX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload XLSX": {
+      "main": [
+        [
+          {
+            "node": "Copy XLSX as Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy XLSX as Sheet": {
+      "main": [
+        [
+          {
+            "node": "Delete XLSX original",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete XLSX original": {
+      "main": [
+        [
+          {
+            "node": "Share Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share Sheet": {
+      "main": [
+        [
+          {
+            "node": "Devolver DOCX+Sheet al usuario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Devolver DOCX+Sheet al usuario": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4bf2c263-0cc6-4745-827d-784c8243d9d5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6b2ad5318e9bf9127ee0c29ba15794da6bf96fad6739050f692f6d7b8576ce92"
+  },
+  "id": "d0Plt4uyxZZCJirY",
+  "tags": []
+}
