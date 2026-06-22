@@ -1,15 +1,18 @@
-// Cliente del microservicio interno `zebra-api` que ya existe en EasyPanel.
-// Mismas dos rutas que usa el flujo de n8n:
+// Cliente del microservicio `zebra-api`. Ahora vive en el mismo contenedor que
+// el dashboard (puerto 8080 local) o, vía env, en otro host. Mismas dos rutas:
 //   POST /generate         -> devuelve DOCX binario
 //   POST /generate-excel   -> devuelve XLSX binario
+// Auth opcional vía X-API-Key (header) si ZEBRA_API_KEY está seteada en el
+// servidor.
 
 import type { ProposalData } from "@/prompts/cotizacion/schema";
 
-const DEFAULT_BASE = process.env.ZEBRA_API_URL ?? "http://zebra-api:8080";
+const DEFAULT_BASE = process.env.ZEBRA_API_URL ?? "http://127.0.0.1:8080";
 const DEFAULT_TIMEOUT_MS = Number.parseInt(
   process.env.ZEBRA_API_TIMEOUT_MS ?? "60000",
   10,
 );
+const API_KEY = process.env.ZEBRA_API_KEY;
 
 export type GeneratedFile = {
   buffer: Buffer;
@@ -26,12 +29,15 @@ async function postBinary(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: expectedContentType,
+    };
+    if (API_KEY) headers["X-API-Key"] = API_KEY;
+
     const response = await fetch(`${DEFAULT_BASE}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: expectedContentType,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });

@@ -9,3 +9,4 @@ dist
 .DS_Store
 .vscode
 .idea
+services/zebra-api/__pycache__/
