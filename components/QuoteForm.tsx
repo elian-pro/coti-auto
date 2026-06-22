@@ -22,7 +22,7 @@ export function QuoteForm({
 
   return (
     <form
-      className="mx-auto w-full max-w-xl"
+      className="w-full"
       onSubmit={(event) => {
         event.preventDefault();
         setTouched(true);
@@ -30,57 +30,69 @@ export function QuoteForm({
         onSubmit({ account: trimmedAccount, meeting_url: trimmedUrl });
       }}
     >
-      <div className="space-y-6">
-        <Field
-          label="Nombre de la cuenta"
-          error={touched && !trimmedAccount ? "Requerido" : undefined}
-        >
-          <input
-            type="text"
-            value={account}
-            onChange={(event) => setAccount(event.target.value)}
-            placeholder="Ej. Zebra Corp"
-            className="w-full border-b border-bone/30 bg-transparent px-0 py-3 text-lg text-bone placeholder:text-bone/30 outline-none transition focus:border-bone"
-            autoComplete="off"
-          />
-        </Field>
+      <div className="card p-8 sm:p-10">
+        <div className="mb-8">
+          <p className="eyebrow mb-3">Nueva cotización</p>
+          <h2 className="text-h2 font-semibold text-ink">Datos de la junta</h2>
+          <p className="mt-3 text-sm text-ink-500">
+            Pega la liga de la junta en Drive y el nombre de la cuenta. En aproximadamente
+            2 minutos generamos el documento.
+          </p>
+        </div>
 
-        <Field
-          label="Liga de la junta"
-          error={
-            touched && trimmedUrl.length > 0 && !urlIsValid
-              ? "Debe comenzar con http(s)://"
-              : touched && !trimmedUrl
-                ? "Requerido"
-                : undefined
-          }
-        >
-          <input
-            type="url"
-            value={meetingUrl}
-            onChange={(event) => setMeetingUrl(event.target.value)}
-            placeholder="https://drive.google.com/..."
-            className="w-full border-b border-bone/30 bg-transparent px-0 py-3 text-lg text-bone placeholder:text-bone/30 outline-none transition focus:border-bone"
-            autoComplete="off"
-          />
-        </Field>
+        <div className="space-y-6">
+          <Field
+            label="Nombre de la cuenta"
+            error={touched && !trimmedAccount ? "Requerido" : undefined}
+          >
+            <input
+              type="text"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+              placeholder="Zebra Corp"
+              className="field-input"
+              aria-invalid={touched && !trimmedAccount ? true : undefined}
+              autoComplete="off"
+            />
+          </Field>
 
-        {errorMessage ? (
-          <div className="border border-bone/30 px-4 py-3 text-sm text-bone/80">
-            {errorMessage}
-          </div>
-        ) : null}
+          <Field
+            label="Liga de la junta"
+            error={
+              touched && trimmedUrl.length > 0 && !urlIsValid
+                ? "Debe comenzar con http(s)://"
+                : touched && !trimmedUrl
+                  ? "Requerido"
+                  : undefined
+            }
+          >
+            <input
+              type="url"
+              value={meetingUrl}
+              onChange={(event) => setMeetingUrl(event.target.value)}
+              placeholder="https://drive.google.com/..."
+              className="field-input"
+              aria-invalid={
+                touched && (trimmedUrl.length === 0 || !urlIsValid) ? true : undefined
+              }
+              autoComplete="off"
+            />
+          </Field>
 
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="group flex w-full items-center justify-center gap-3 rounded-full bg-bone px-6 py-4 text-sm font-semibold uppercase tracking-[0.25em] text-ink transition hover:bg-bone/90 disabled:cursor-not-allowed disabled:bg-bone/40 disabled:text-ink/60"
-        >
-          <span>{isSubmitting ? "Enviando" : "Generar cotización"}</span>
-          <span aria-hidden className="transition group-hover:translate-x-1">
-            →
-          </span>
-        </button>
+          {errorMessage ? (
+            <div
+              role="alert"
+              className="rounded-xl border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink"
+            >
+              {errorMessage}
+            </div>
+          ) : null}
+
+          <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
+            <span>{isSubmitting ? "Enviando" : "Generar cotización"}</span>
+            <ArrowRight />
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -98,14 +110,31 @@ function Field({
   return (
     <label className="block">
       <span className="mb-2 flex items-baseline justify-between">
-        <span className="text-xs font-medium uppercase tracking-[0.25em] text-bone/60">
-          {label}
-        </span>
+        <span className="text-sm font-medium text-ink">{label}</span>
         {error ? (
-          <span className="text-xs uppercase tracking-widest text-bone">{error}</span>
+          <span className="text-xs font-medium text-[#B91C1C]">{error}</span>
         ) : null}
       </span>
       {children}
     </label>
+  );
+}
+
+function ArrowRight() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5 12h14" />
+      <path d="m13 5 7 7-7 7" />
+    </svg>
   );
 }

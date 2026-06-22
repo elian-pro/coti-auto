@@ -6,6 +6,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { QuoteForm } from "@/components/QuoteForm";
 import { ResultCard } from "@/components/ResultCard";
 import { ZebraFrame } from "@/components/ZebraFrame";
+import { ZebraLogo } from "@/components/ZebraLogo";
 import type { QuoteResult } from "@/lib/types";
 
 type Status = "idle" | "loading" | "done";
@@ -63,47 +64,61 @@ export default function HomeClient() {
   return (
     <ZebraFrame>
       <Header />
-      <main className="flex flex-1 flex-col">
-        {status === "idle" ? (
-          <section className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center pb-16 pt-12 sm:pt-20">
-            <div className="mb-12 text-center sm:mb-16">
-              <p className="mb-4 text-xs font-medium uppercase tracking-[0.4em] text-bone/60">
-                Cotizaciones automáticas
-              </p>
-              <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-                De la junta de Drive
-                <br />
-                al documento listo.
+
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="relative overflow-hidden">
+          <span className="zebra-motif" aria-hidden />
+          <div className="container-x relative z-10 py-16 md:py-24">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="eyebrow mb-5">Cotizaciones automáticas</p>
+              <h1 className="text-h1 font-semibold text-ink">
+                De la junta de Drive al documento listo.
               </h1>
-              <p className="mx-auto mt-6 max-w-md text-sm text-bone/60 sm:text-base">
+              <p className="mx-auto mt-5 max-w-xl text-base text-ink-500 md:text-[15px]">
                 Pega la liga de la junta y el nombre de la cuenta. En aproximadamente
-                2 minutos tienes el documento generado en Drive.
+                2 minutos tienes el documento generado en Drive y disponible en la carpeta
+                compartida.
               </p>
             </div>
+          </div>
+        </section>
 
-            <QuoteForm
-              onSubmit={handleSubmit}
-              isSubmitting={false}
-              errorMessage={errorMessage}
-            />
-          </section>
-        ) : null}
+        {/* Form / Loading / Result section, recessed surface */}
+        <section className="bg-ink-50 py-16 md:py-24">
+          <div className="container-x">
+            <div className="mx-auto max-w-2xl">
+              {status === "idle" ? (
+                <QuoteForm
+                  onSubmit={handleSubmit}
+                  isSubmitting={false}
+                  errorMessage={errorMessage}
+                />
+              ) : null}
 
-        {status === "loading" ? (
-          <section className="flex flex-1 items-center justify-center">
-            <LoadingScreen account={account} />
-          </section>
-        ) : null}
+              {status === "loading" ? <LoadingScreen account={account} /> : null}
 
-        {status === "done" && result ? (
-          <section className="flex flex-1 items-center justify-center">
-            <ResultCard account={account} result={result} onReset={handleReset} />
-          </section>
-        ) : null}
+              {status === "done" && result ? (
+                <ResultCard account={account} result={result} onReset={handleReset} />
+              ) : null}
+            </div>
+          </div>
+        </section>
       </main>
-      <footer className="mt-12 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-bone/40">
-        <span>Zebra · Coti Auto</span>
-        <span data-testid="build-tag">build {process.env.NEXT_PUBLIC_BUILD_TAG ?? "dev"}</span>
+
+      <footer className="bg-ink py-10 text-white/70">
+        <div className="container-x flex flex-col items-center justify-between gap-4 sm:flex-row">
+          <div className="flex items-center gap-3 text-white">
+            <ZebraLogo className="h-4 w-auto" />
+            <span className="eyebrow !text-white/60">Coti Auto</span>
+          </div>
+          <span
+            className="text-xs text-white/50"
+            style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+          >
+            build {process.env.NEXT_PUBLIC_BUILD_TAG ?? "dev"}
+          </span>
+        </div>
       </footer>
     </ZebraFrame>
   );

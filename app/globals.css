@@ -2,23 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Zebra Design Tokens — fuente única (mismo set que el sitio). */
 :root {
-  color-scheme: dark;
+  --border: rgba(10, 10, 10, 0.1);
+  --border-strong: rgba(10, 10, 10, 0.12);
+
+  --r-chip: 6px;
+  --r-control: 8px;
+  --r-input: 10px;
+  --r-btn: 10px;
+  --r-card: 12px;
+  --r-pill: 999px;
+
+  --shadow-sm: 0 0 0 1px rgba(10, 10, 10, 0.04), 0 1px 2px rgba(10, 10, 10, 0.06);
+  --shadow-md: 0 0 0 1px rgba(10, 10, 10, 0.04),
+    0 2px 4px -1px rgba(10, 10, 10, 0.08), 0 4px 8px -2px rgba(10, 10, 10, 0.06);
+  --shadow-lg: 0 0 0 1px rgba(10, 10, 10, 0.04),
+    0 4px 8px -2px rgba(10, 10, 10, 0.1), 0 12px 24px -6px rgba(10, 10, 10, 0.1);
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --text: #0a0a0a;
+  --text-muted: #737373;
+  --accent: #0a0a0a;
+
+  --motif-angle: 115deg;
+  --motif-line: 2px;
+  --motif-gap: 26px;
+  --motif-opacity: 0.05;
+
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #0a0a0a;
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
   font-feature-settings: "ss01", "cv11";
 }
 
+/* Default text wrap rules from the DS */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
 ::selection {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Hide spinners on number inputs */
@@ -26,4 +65,112 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* ---------- Component classes ---------- */
+@layer components {
+  /* Eyebrow — JetBrains Mono uppercase tiny label */
+  .eyebrow {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* Buttons (no longer pill — 10px) */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] bg-ink px-6 py-3 text-sm font-semibold text-white transition;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    transition-duration: 280ms;
+  }
+  .btn-primary:hover {
+    background: #262626;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+  }
+  .btn-primary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(10, 10, 10, 0.15);
+  }
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+  .btn-primary[disabled] {
+    background: #94a3b8;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink transition;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    transition-duration: 280ms;
+  }
+  .btn-ghost:hover {
+    border-color: var(--text);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+  .btn-ghost:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  /* Form inputs */
+  .field-input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-3 text-base text-ink placeholder:text-ink-400 transition;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .field-input:hover {
+    border-color: #cbd5e1;
+  }
+  .field-input:focus {
+    outline: none;
+    border-color: var(--text);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .field-input[aria-invalid="true"] {
+    border-color: #b91c1c;
+  }
+
+  /* Cards */
+  .card {
+    @apply rounded-3xl border border-ink-200 bg-white;
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Container */
+  .container-x {
+    @apply mx-auto w-full max-w-[1280px] px-6 md:px-10 lg:px-20;
+  }
+}
+
+/* MOTIF — diagonal stripes detrás del contenido (currentColor) */
+.zebra-motif {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 38%;
+  pointer-events: none;
+  z-index: 0;
+  color: var(--text);
+  opacity: var(--motif-opacity);
+  background-image: repeating-linear-gradient(
+    var(--motif-angle),
+    currentColor 0 var(--motif-line),
+    transparent var(--motif-line) var(--motif-gap)
+  );
+}
+
+/* Reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  display: "swap",
+  variable: "--font-mono",
 });
 
 const BUILD_TAG = process.env.BUILD_TAG ?? "dev";
@@ -17,8 +24,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={inter.variable}>
-      <body className="min-h-screen bg-ink text-bone antialiased">{children}</body>
+    <html lang="es" className={`${inter.variable} ${jetbrains.variable}`}>
+      <body className="min-h-screen bg-white text-ink antialiased">{children}</body>
     </html>
   );
 }

@@ -12,41 +12,68 @@ export function ResultCard({
   const driveUrl = result.drive_url;
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-10 py-16 text-center">
-      <p className="text-xs uppercase tracking-[0.4em] text-bone/60">Cotización lista</p>
-      <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-        {account}
-      </h2>
+    <div className="card p-8 sm:p-10">
+      <div className="mb-8">
+        <p className="eyebrow mb-3">Cotización lista</p>
+        <h2 className="text-h2 font-semibold text-ink">{account}</h2>
+        {driveUrl ? (
+          <p className="mt-3 text-sm text-ink-500">
+            El documento se generó en Drive. Ábrelo para revisar o compartir.
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-ink-500">
+            El webhook respondió, pero sin un enlace de Drive. Revisa el último nodo del
+            flujo en n8n.
+          </p>
+        )}
+      </div>
 
-      {driveUrl ? (
-        <a
-          href={driveUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="group inline-flex items-center justify-center gap-3 rounded-full bg-bone px-8 py-4 text-sm font-semibold uppercase tracking-[0.25em] text-ink transition hover:bg-bone/90"
-        >
-          <span>Abrir en Drive</span>
-          <span aria-hidden className="transition group-hover:translate-x-1">
-            →
-          </span>
-        </a>
-      ) : (
-        <div className="border border-bone/30 px-4 py-3 text-sm text-bone/70">
-          El webhook respondió, pero sin enlace de Drive. Revisa el último nodo del flujo en n8n.
+      <div className="space-y-4">
+        {driveUrl ? (
+          <a
+            href={driveUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="btn-primary w-full"
+          >
+            <span>Abrir en Drive</span>
+            <ArrowUpRight />
+          </a>
+        ) : null}
+
+        {driveUrl ? (
+          <p className="break-all text-xs text-ink-500">
+            <span className="eyebrow mr-2 inline-block align-middle">Url</span>
+            {driveUrl}
+          </p>
+        ) : null}
+
+        <div className="flex items-center justify-between border-t border-ink-200 pt-6">
+          <span className="eyebrow">¿Otra cotización?</span>
+          <button type="button" onClick={onReset} className="btn-ghost text-sm">
+            Nueva cotización
+          </button>
         </div>
-      )}
-
-      {driveUrl ? (
-        <p className="break-all text-xs text-bone/40">{driveUrl}</p>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={onReset}
-        className="text-xs uppercase tracking-[0.3em] text-bone/60 underline-offset-4 transition hover:text-bone hover:underline"
-      >
-        Nueva cotización
-      </button>
+      </div>
     </div>
+  );
+}
+
+function ArrowUpRight() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M7 17 17 7" />
+      <path d="M7 7h10v10" />
+    </svg>
   );
 }
