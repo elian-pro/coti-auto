@@ -104,11 +104,8 @@ export async function POST(request: Request) {
 
 function normalizeQuoteResult(payload: unknown, accountFallback: string) {
   const source = unwrap(payload);
-  const driveUrl =
+  const docsUrl =
     pickString(source, [
-      "drive_url",
-      "driveUrl",
-      "drive",
       "docs_url",
       "docsUrl",
       "doc_url",
@@ -117,14 +114,42 @@ function normalizeQuoteResult(payload: unknown, accountFallback: string) {
       "documentUrl",
       "google_docs",
       "googleDocs",
+      "drive_url",
+      "driveUrl",
+      "drive",
       "url",
       "link",
+    ]) ?? undefined;
+  const sheetsUrl =
+    pickString(source, [
+      "sheets_url",
+      "sheetsUrl",
+      "sheet_url",
+      "sheetUrl",
+      "spreadsheet_url",
+      "spreadsheetUrl",
+      "google_sheets",
+      "googleSheets",
+      "calculadora_url",
+      "calculadoraUrl",
+    ]) ?? undefined;
+  const pdfUrl =
+    pickString(source, [
+      "pdf_url",
+      "pdfUrl",
+      "pdf",
+      "pdf_link",
+      "pdfLink",
+      "file_url",
+      "fileUrl",
     ]) ?? undefined;
   const account = pickString(source, ["account", "cuenta", "client", "name"]) ?? accountFallback;
 
   return {
     account,
-    drive_url: driveUrl,
+    docs_url: docsUrl,
+    sheets_url: sheetsUrl,
+    pdf_url: pdfUrl,
     raw: payload ?? null,
   };
 }
