@@ -35,6 +35,7 @@ from zebra_investment_calc import (
     calcular_plan_12_meses,
 )
 from zebra_excel_annex import generate_investment_excel
+from zebra_evaluation_builder import generate_evaluation_pdf
 
 
 # =============================================================================
@@ -268,6 +269,57 @@ async def generate_excel(request: Request, x_api_key: Optional[str] = Header(Non
     return FileResponse(
         path=str(output_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+    )
+
+
+@app.post("/evaluate")
+async def evaluate(request: Request, x_api_key: Optional[str] = Header(None)):
+    """
+    Genera el PDF de Evaluación del Diagnóstico (prompt v2.3).
+
+    Body: el JSON estructurado del prompt evaluador (ver
+    `prompts/evaluacion/schema.ts` en el dashboard).
+    """
+    _check_auth(x_api_key)
+
+    try:
+        body = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Body no es JSON válido: {e}")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body debe ser un objeto JSON.")
+
+    if "metadata" not in body or "score_total" not in body:
+        raise HTTPException(
+            status_code=400,
+            detail="Faltan campos obligatorios del evaluador: 'metadata' y 'score_total'.",
+        )
+
+    slug = body.pop("__slug__", None) or _slugify(
+        body.get("metadata", {}).get("cliente_prospecto") or "evaluacion"
+    )
+    filename = f"evaluacion_{slug}_{uuid.uuid4().hex[:8]}.pdf"
+    output_path = OUTPUT_DIR / filename
+
+    logo_path = Path(__file__).parent / "zebra_logo_white.png"
+    logo = str(logo_path) if logo_path.exists() else None
+
+    try:
+        generate_evaluation_pdf(
+            evaluation_data=body,
+            output_path=str(output_path),
+            logo_path=logo,
+        )
+        log.info("PDF de evaluación generado: %s", output_path)
+    except Exception as e:
+        log.exception("Error generando PDF de evaluación")
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {e}")
+
+    return FileResponse(
+        path=str(output_path),
+        media_type="application/pdf",
         filename=filename,
     )
 

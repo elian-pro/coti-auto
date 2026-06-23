@@ -1,5 +1,12 @@
 import type { QuoteResult } from "@/lib/types";
 
+const VERDICT_LABEL: Record<NonNullable<QuoteResult["evaluation_verdict"]>, string> = {
+  no_cotizar: "No cotizar",
+  llenar_gaps: "Llenar gaps",
+  cotizar: "Cotizar",
+  excelente: "Excelente",
+};
+
 export function ResultCard({
   account,
   result,
@@ -9,8 +16,8 @@ export function ResultCard({
   result: QuoteResult;
   onReset: () => void;
 }) {
-  const { docs_url, sheets_url, pdf_url } = result;
-  const hasAnything = Boolean(docs_url || sheets_url || pdf_url);
+  const { docs_url, sheets_url, pdf_url, evaluation_url } = result;
+  const hasAnything = Boolean(docs_url || sheets_url || pdf_url || evaluation_url);
 
   return (
     <div className="card p-8 sm:p-10">
@@ -23,10 +30,29 @@ export function ResultCard({
           </p>
         ) : (
           <p className="mt-3 text-sm text-ink-500">
-            El webhook respondió, pero sin enlaces. Revisa el último nodo del flujo en n8n.
+            El proceso respondió, pero sin enlaces. Revisa los logs del contenedor.
           </p>
         )}
       </div>
+
+      {result.evaluation_status === "ok" && result.evaluation_score !== undefined ? (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-ink-200 bg-ink-50 px-4 py-3">
+          <span className="eyebrow">Diagnóstico</span>
+          <span className="text-sm text-ink">
+            <span
+              className="font-semibold tabular-nums"
+              style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+            >
+              {result.evaluation_score}/100
+            </span>
+            {result.evaluation_verdict ? (
+              <span className="ml-3 text-ink-500">
+                · {VERDICT_LABEL[result.evaluation_verdict]}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
 
       {hasAnything ? (
         <div className="space-y-3">
@@ -39,6 +65,19 @@ export function ResultCard({
             >
               <DocIcon />
               <span>Abrir cotización</span>
+              <ArrowUpRight />
+            </a>
+          ) : null}
+
+          {evaluation_url ? (
+            <a
+              href={evaluation_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-ghost w-full"
+            >
+              <ChartIcon />
+              <span>Abrir diagnóstico</span>
               <ArrowUpRight />
             </a>
           ) : null}
@@ -64,7 +103,7 @@ export function ResultCard({
               className="flex items-center justify-center gap-2 pt-2 text-xs text-ink-500 underline-offset-4 transition hover:text-ink hover:underline"
             >
               <span className="eyebrow">PDF</span>
-              <span>Descargar versión PDF</span>
+              <span>Descargar cotización en PDF</span>
             </a>
           ) : null}
         </div>
@@ -138,6 +177,25 @@ function SheetIcon() {
       <path d="M3 15h18" />
       <path d="M9 3v18" />
       <path d="M15 3v18" />
+    </svg>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 3v18h18" />
+      <path d="M7 14l4-4 4 4 5-6" />
     </svg>
   );
 }

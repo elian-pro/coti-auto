@@ -123,6 +123,44 @@ export function uploadXlsxAsGoogleSheet(
   );
 }
 
+// Sube un PDF tal cual (sin conversión a Google Doc). Drive lo muestra con
+// su visor nativo. URL canónica de "view".
+export async function uploadPdfAsIs(
+  buffer: Buffer,
+  filename: string,
+  folderId: string,
+): Promise<UploadResult> {
+  const drive = getDrive();
+  const created = await drive.files.create({
+    supportsAllDrives: true,
+    requestBody: {
+      name: filename.endsWith(".pdf") ? filename : `${filename}.pdf`,
+      mimeType: "application/pdf",
+      parents: [folderId],
+    },
+    media: {
+      mimeType: "application/pdf",
+      body: Readable.from(buffer),
+    },
+    fields: "id",
+  });
+  const id = created.data.id;
+  if (!id) throw new Error("Drive no devolvió fileId tras la subida del PDF.");
+  await drive.permissions.create({
+    fileId: id,
+    supportsAllDrives: true,
+    requestBody: {
+      role: "reader",
+      type: "anyone",
+      allowFileDiscovery: false,
+    },
+  });
+  return {
+    id,
+    docs_url: `https://drive.google.com/file/d/${id}/view`,
+  };
+}
+
 // Exporta un Google Doc como texto plano usando la SA. Soporta docs
 // privados que tengan permiso de lectura para la cuenta de servicio.
 export async function exportGoogleDocAsText(fileId: string): Promise<string> {

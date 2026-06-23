@@ -6,6 +6,7 @@
 // servidor.
 
 import type { ProposalData } from "@/prompts/cotizacion/schema";
+import type { EvaluationData } from "@/prompts/evaluacion/schema";
 
 const DEFAULT_BASE = process.env.ZEBRA_API_URL ?? "http://127.0.0.1:8080";
 const DEFAULT_TIMEOUT_MS = Number.parseInt(
@@ -21,8 +22,8 @@ export type GeneratedFile = {
 };
 
 async function postBinary(
-  path: "/generate" | "/generate-excel",
-  payload: ProposalData & { __slug__: string },
+  path: "/generate" | "/generate-excel" | "/evaluate",
+  payload: Record<string, unknown> & { __slug__: string },
   fallbackFilename: string,
   expectedContentType: string,
 ): Promise<GeneratedFile> {
@@ -88,5 +89,17 @@ export function generateXlsx(
     { ...data, __slug__: slug },
     `${slug}.xlsx`,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+}
+
+export function generateEvaluationPdf(
+  data: EvaluationData,
+  slug: string,
+): Promise<GeneratedFile> {
+  return postBinary(
+    "/evaluate",
+    { ...data, __slug__: slug },
+    `evaluacion_${slug}.pdf`,
+    "application/pdf",
   );
 }

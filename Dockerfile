@@ -43,11 +43,15 @@ ENV HOSTNAME=0.0.0.0
 ENV ZEBRA_API_URL=http://127.0.0.1:8080
 ENV ZEBRA_OUTPUT_DIR=/tmp/zebra
 
-# Sistema: Python + libs nativas que necesita python-docx / openpyxl / lxml
+# Sistema: Python + libs nativas que necesitan python-docx, openpyxl, lxml
+# y WeasyPrint (Pango / Cairo / GDK-PixBuf para el PDF de evaluación).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        python3 python3-venv python3-pip \
        libxml2 libxslt1.1 \
+       libpango-1.0-0 libpangoft2-1.0-0 \
+       libcairo2 libgdk-pixbuf-2.0-0 \
+       libffi8 shared-mime-info fonts-liberation \
        ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
@@ -59,7 +63,7 @@ ENV PATH="$VIRTUAL_ENV/bin:${PATH}"
 COPY services/zebra-api/requirements.txt /tmp/req.txt
 RUN pip install --no-cache-dir --upgrade pip \
   && pip install --no-cache-dir -r /tmp/req.txt \
-  && python -c "import fastapi, uvicorn, docx, openpyxl; print('python deps ok')"
+  && python -c "import fastapi, uvicorn, docx, openpyxl, weasyprint; print('python deps ok')"
 
 # Usuario no-root
 RUN groupadd --system --gid 1001 nodejs \
