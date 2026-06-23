@@ -20,18 +20,27 @@ from docx.oxml import OxmlElement
 
 
 # =============================================================================
-# PALETA OFICIAL ZEBRA
+# PALETA OFICIAL ZEBRA (Design System Kit v2.0, tema light)
 # =============================================================================
-ZEBRA_YELLOW = "F9D626"       # Acento principal
-ZEBRA_BLACK = "111111"        # Texto principal / fondos oscuros
-ZEBRA_DARK_GREY = "333333"    # Texto secundario
-ZEBRA_MID_GREY = "888888"     # Texto terciario / detalles
-ZEBRA_LIGHT_GREY = "DDDDDD"   # Bordes / separadores suaves
-ZEBRA_BG_LIGHT = "F5F5F5"     # Fondo de cajas neutras
-ZEBRA_WHITE = "FFFFFF"        # Texto sobre fondos oscuros
+# Antes había un amarillo F9D626 como acento. ZR-05 del DS prohíbe usar
+# amarillo como chrome de UI. Aquí mantenemos los NOMBRES de variables para
+# no romper la lógica del builder, pero cambiamos los VALORES a la rampa ink
+# del DS. El "amarillo" (acento sobre fondos oscuros) ahora es BONE (#FFFFFF),
+# así un `color=ZEBRA_YELLOW` en una sección negra sigue siendo legible.
+# Para fills que antes eran amarillos se introduce ZEBRA_ACCENT_FILL = INK.
+ZEBRA_YELLOW       = "FFFFFF"   # Acento sobre fondos dark (antes amarillo)
+ZEBRA_ACCENT_FILL  = "0A0A0A"   # Fondo de cajas/KPIs que antes eran amarillo
+ZEBRA_BLACK        = "0A0A0A"   # --text / --accent (ink puro del DS)
+ZEBRA_DARK_GREY    = "262626"   # ink-700 (hover, secondary emphasis)
+ZEBRA_MID_GREY     = "737373"   # ink-500 (muted text, AA legible)
+ZEBRA_LIGHT_GREY   = "E5E5E5"   # ink-200 (bordes hairline)
+ZEBRA_BG_LIGHT     = "F9FAFB"   # ink-50 (--surface-2, recessed surface)
+ZEBRA_WHITE        = "FFFFFF"   # --surface / --bone
 
-# Fuente oficial
-ZEBRA_FONT = "Arial"
+# Fuente oficial del DS: Inter para body, JetBrains Mono para números/eyebrows.
+# Word cae a Calibri si Inter no está instalada en la máquina que abre el DOCX.
+ZEBRA_FONT       = "Inter"
+ZEBRA_FONT_MONO  = "JetBrains Mono"
 
 
 # =============================================================================
@@ -325,9 +334,9 @@ def build_header_tripartita(doc, cliente, modelo, objetivo):
 
 def build_section_header(doc, numero, titulo):
     """
-    Encabezado de sección: barra horizontal completa.
-    Izquierda: cuadrito amarillo con el número en negro.
-    Derecha: barra negra con el título en blanco.
+    Encabezado de sección: barra horizontal continua ink.
+    Izquierda: número en blanco mono sobre ink.
+    Derecha: título en blanco sobre ink.
     Ej: [01] CONTEXTO DEL CLIENTE
     """
     table = doc.add_table(rows=1, cols=2)
@@ -336,11 +345,11 @@ def build_section_header(doc, numero, titulo):
     table.columns[1].width = Inches(6.4)
     set_table_cant_split(table)
 
-    # Celda del número (amarilla)
+    # Celda del número (ink fill, número blanco)
     cell_num = table.rows[0].cells[0]
     cell_num.width = Inches(0.6)
-    set_cell_background(cell_num, ZEBRA_YELLOW)
-    set_cell_borders(cell_num, color=ZEBRA_YELLOW, size=4)
+    set_cell_background(cell_num, ZEBRA_ACCENT_FILL)
+    set_cell_borders(cell_num, color=ZEBRA_ACCENT_FILL, size=4)
     set_cell_margins(cell_num, top=120, bottom=120, left=0, right=0)
     set_cell_vertical_alignment(cell_num, 'center')
 
@@ -351,7 +360,7 @@ def build_section_header(doc, numero, titulo):
     pf.space_before = Pt(0)
     pf.space_after = Pt(0)
     r = p.add_run(str(numero))
-    style_run(r, size=11, bold=True, color=ZEBRA_BLACK)
+    style_run(r, size=11, bold=True, color=ZEBRA_WHITE)
 
     # Celda del título (negra)
     cell_title = table.rows[0].cells[1]

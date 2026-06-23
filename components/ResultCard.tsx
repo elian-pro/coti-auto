@@ -110,6 +110,15 @@ export function ResultCard({
         </div>
       ) : null}
 
+      {result.evaluation_status === "no_aplicable" ? (
+        <div className="mb-6 rounded-xl border border-ink-200 bg-ink-50 px-4 py-3">
+          <p className="eyebrow mb-1">Diagnóstico no se generó</p>
+          <p className="text-sm text-ink-500">
+            {result.evaluation_error ?? "Claude no devolvió un JSON evaluable."}
+          </p>
+        </div>
+      ) : null}
+
       {hasFiles ? (
         <div className="space-y-3">
           {docs_url ? (

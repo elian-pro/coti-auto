@@ -270,6 +270,17 @@ export async function POST(request: Request) {
         evalParsed.kind === "evaluation" ? evalParsed.data.score_total : undefined,
       evaluation_verdict:
         evalParsed.kind === "evaluation" ? evalParsed.data.veredicto : undefined,
+      evaluation_error:
+        evalParsed.kind === "fallback" ? evalParsed.data.razon : undefined,
+      evaluation_schema_issues:
+        evalParsed.kind === "fallback" && "_error" in evalParsed
+          ? (evalParsed as { _error?: { zodError?: { issues?: unknown } } })._error
+              ?.zodError?.issues
+          : undefined,
+      evaluation_raw_preview:
+        evalParsed.kind === "fallback" && "_error" in evalParsed
+          ? (evalParsed as { _error?: { rawText?: string } })._error?.rawText
+          : undefined,
       usage: {
         cotizacion: cotResult.usage,
         evaluacion: evalResult.usage,
