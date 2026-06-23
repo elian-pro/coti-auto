@@ -1,9 +1,8 @@
-// Descarga el contenido de un Google Doc / Drive link como texto plano.
-//
-// Caso 1: la URL es un Google Doc compartido públicamente. Usamos el endpoint
-//   `/export?format=txt` que devuelve UTF-8 sin autenticación.
-// Caso 2: la URL apunta a un archivo en Drive distinto a un Doc. Lo dejamos
-//   pendiente: requeriría cuenta de servicio. Por ahora tiramos error claro.
+// Descarga el contenido de un Google Doc como texto plano.
+// Prefiere la cuenta de servicio (admite docs privados); si no hay SA o
+// el doc está abierto al público, usa el endpoint público de exportación.
+
+import { exportGoogleDocAsText } from "@/lib/drive";
 
 const DOC_ID_RX = /\/document\/d\/([a-zA-Z0-9_-]{20,})/;
 const DRIVE_FILE_ID_RX = /\/file\/d\/([a-zA-Z0-9_-]{20,})/;
@@ -26,22 +25,42 @@ export type Transcript = {
 export async function fetchTranscript(driveUrl: string): Promise<Transcript> {
   const docMatch = DOC_ID_RX.exec(driveUrl);
   if (docMatch) {
-    return fetchDocAsText(docMatch[1]);
+    return fetchDoc(docMatch[1]);
   }
   const fileMatch = DRIVE_FILE_ID_RX.exec(driveUrl);
   if (fileMatch) {
     throw new TranscriptFetchError(
-      "El link es un archivo de Drive (no un Google Doc). La descarga directa requiere cuenta de servicio. Pendiente Fase 2.1.",
+      "El link es un archivo de Drive (no un Google Doc). Solo se soporta Google Docs por ahora.",
       "parse_url",
     );
   }
   throw new TranscriptFetchError(
-    "La URL no parece un Google Doc ni un archivo de Drive válido.",
+    "La URL no parece un Google Doc válido.",
     "parse_url",
   );
 }
 
-async function fetchDocAsText(docId: string): Promise<Transcript> {
+async function fetchDoc(docId: string): Promise<Transcript> {
+  // Camino 1: si tenemos cuenta de servicio, leemos vía API (admite privados).
+  if (process.env.GOOGLE_SA_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    try {
+      const text = await exportGoogleDocAsText(docId);
+      if (text.trim().length === 0) {
+        throw new TranscriptFetchError("El Google Doc vino vacío.", "decode");
+      }
+      return { text, docId };
+    } catch (error) {
+      // Si la SA falla (sin permisos, etc.), caemos al export público.
+      if (error instanceof TranscriptFetchError) throw error;
+      // Log silencioso, intentamos público
+      console.warn(
+        "[transcript] SA falló, intentando export público:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  // Camino 2: export público (requiere doc compartido como "cualquiera con el link").
   const url = `https://docs.google.com/document/d/${docId}/export?format=txt`;
   let response: Response;
   try {
@@ -54,7 +73,7 @@ async function fetchDocAsText(docId: string): Promise<Transcript> {
   }
   if (!response.ok) {
     throw new TranscriptFetchError(
-      `Google Doc respondió ${response.status}. ¿El documento está compartido como "cualquiera con el link"?`,
+      `Google Doc respondió ${response.status}. Comparte como "cualquiera con el link" o agrega la cuenta de servicio como lector.`,
       "fetch",
     );
   }

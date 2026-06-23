@@ -29,7 +29,7 @@ export default function HomeClient() {
     setStatus("loading");
 
     try {
-      const response = await fetch("/api/quote", {
+      const response = await fetch("/api/quote-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account: accountValue, meeting_url }),
@@ -48,7 +48,9 @@ export default function HomeClient() {
       setStatus("done");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "No pudimos contactar al webhook.";
+        error instanceof Error
+          ? error.message
+          : "No pudimos generar la cotización.";
       setErrorMessage(message);
       setStatus("idle");
     }

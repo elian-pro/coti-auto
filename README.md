@@ -1,82 +1,91 @@
-# Coti Auto · Zebra Monorepo
+# Coti Auto · Zebra
 
-Dashboard (Next.js 15 + Tailwind) + microservicio builder (FastAPI + python-docx +
-openpyxl) en un **mismo repo y un mismo contenedor**. Pensado para EasyPanel.
+Dashboard de cotizaciones automáticas para Zebra. **Todo en un solo
+contenedor**: Next.js (UI + orquestación) + FastAPI (builder DOCX/XLSX) +
+Google Drive directo. **Sin n8n. Sin Supabase.**
 
 ```
 coti-auto/
-├── app/, components/, lib/, prompts/      ← Next.js (Coti Auto)
-├── services/zebra-api/                    ← Python FastAPI (Zebra API)
+├── app/, components/, lib/, prompts/      ← Next.js (dashboard + orquestador)
+├── services/zebra-api/                    ← Python FastAPI (builder)
 │   ├── zebra_api.py
 │   ├── zebra_proposal_builder.py
 │   ├── zebra_investment_calc.py
 │   ├── zebra_excel_annex.py
-│   ├── requirements.txt
-│   └── zebra_logo.png
+│   └── requirements.txt
 ├── scripts/start.sh                       ← lanza uvicorn (:8080) + node (:3000)
 └── Dockerfile                             ← Node 20 + Python 3 multi-stage
 ```
 
-## Cómo corre el contenedor
+## Flujo end-to-end
 
-Un solo contenedor con dos procesos:
-
-- `uvicorn zebra_api:app` en `0.0.0.0:8080` (Python builder).
-- `node server.js` (Next.js standalone) en `0.0.0.0:3000`.
-
-El dashboard llama al builder vía `http://127.0.0.1:8080` (sin salto de red).
-Si cualquiera de los dos procesos muere, `start.sh` mata al otro y el contenedor
-sale con su exit code → EasyPanel/Docker reinicia limpio.
+```
+Formulario web
+   │  POST /api/quote-direct { account, meeting_url }
+   ▼
+1. Descargar Google Doc como texto (cuenta de servicio o export público)
+2. Llamar a Claude (prompt v3.2 cacheado en system) → JSON
+3. Validar JSON con schema zod (proposal_data o diagnostico_preliminar)
+4. Llamar al builder Python local (127.0.0.1:8080) → DOCX (+ XLSX si aplica)
+5. Subir a Drive con la SA → Google Doc + Google Sheet, share público
+6. Devolver { docs_url, sheets_url, pdf_url } al frontend
+```
 
 ## Endpoints
 
-| Ruta | Servicio | Estado | Qué hace |
-|---|---|---|---|
-| `POST /api/quote` | Next.js | Producción | Proxy al webhook de n8n. Devuelve `docs_url`, opcional `sheets_url`, `pdf_url`. |
-| `POST /api/quote-direct` | Next.js | **Fase 2 (en pruebas)** | Hace todo en código: baja la transcripción, llama a Claude con prompt v3.2 cacheado, valida JSON, llama al builder local, devuelve DOCX (+ XLSX si aplica) en base64. |
-| `GET  /api/health` | Next.js | Producción | `{ "status": "ok" }`. |
-| `POST :8080/generate` | FastAPI | Producción | Recibe `proposal_data`, devuelve DOCX. Auth opcional vía `X-API-Key`. |
-| `POST :8080/generate-excel` | FastAPI | Producción | Recibe `proposal_data` con `calculadora_inputs`, devuelve XLSX. |
-| `GET  :8080/health` | FastAPI | Producción | Healthcheck del builder. |
+| Ruta | Qué hace |
+|---|---|
+| `POST /api/quote-direct` | Flujo completo. Devuelve `{ docs_url, sheets_url?, pdf_url }`. |
+| `POST /api/quote` | Alias retro-compatible: re-emite a `/api/quote-direct`. |
+| `GET  /api/health` | `{ "status": "ok" }`. |
+| `POST :8080/generate` | Builder Python directo (uso interno). |
+| `POST :8080/generate-excel` | Builder Python directo (uso interno). |
 
 ## Variables de entorno
 
-### Next.js (dashboard)
+### Obligatorias
+
+| Variable | Para qué |
+|---|---|
+| `ANTHROPIC_API_KEY` | Clave de Anthropic. |
+| `GOOGLE_SA_JSON` | JSON completo de la cuenta de servicio (1 línea, escapes en `private_key`). |
+
+### Recomendadas
 
 | Variable | Default | Notas |
 |---|---|---|
-| `N8N_WEBHOOK_URL` | (el actual) | URL del webhook de n8n. Usado por `/api/quote` (legacy). |
-| `WEBHOOK_TIMEOUT_MS` | `300000` | Timeout esperando a n8n. |
-| `ANTHROPIC_API_KEY` | _(sin default)_ | Clave de Anthropic. Necesaria para `/api/quote-direct`. |
+| `DRIVE_FOLDER_ID` | `1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD` | ID de la carpeta de Drive de cotizaciones. |
 | `ANTHROPIC_MODEL` | `claude-opus-4-7` | Modelo de Claude. |
 | `ANTHROPIC_MAX_TOKENS` | `16000` | Tope de tokens de salida. |
-| `ZEBRA_API_URL` | `http://127.0.0.1:8080` | Host del builder. Default = mismo contenedor. |
-| `ZEBRA_API_TIMEOUT_MS` | `60000` | Timeout del builder. |
-| `ZEBRA_API_KEY` | _(opcional)_ | Si se setea, se envía como `X-API-Key`. |
-| `NEXT_PUBLIC_DRIVE_FOLDER_URL` | la carpeta de Drive | Botón "Carpeta" del header. |
+| `ZEBRA_API_URL` | `http://127.0.0.1:8080` | Builder local. Solo cambia si separas servicios. |
+| `ZEBRA_API_KEY` | _(vacío)_ | Si se setea, el builder exige `X-API-Key`. |
+| `NEXT_PUBLIC_DRIVE_FOLDER_URL` | la carpeta | Botón "Carpeta" del header. |
 | `BUILD_TAG` / `NEXT_PUBLIC_BUILD_TAG` | `dev` | Tag visible en el footer. |
 
-### FastAPI (builder, en el mismo contenedor)
+## Setup de la cuenta de servicio Google
 
-| Variable | Default | Notas |
-|---|---|---|
-| `ZEBRA_OUTPUT_DIR` | `/tmp/zebra` | Dónde guarda DOCX/XLSX antes de servirlos. |
-| `ZEBRA_API_KEY` | _(opcional)_ | Si se setea, el endpoint exige `X-API-Key` que coincida. |
+1. Ve a [Google Cloud Console → IAM → Cuentas de servicio](https://console.cloud.google.com/iam-admin/serviceaccounts).
+2. **Crear cuenta de servicio**. Nombre sugerido: `coti-auto`.
+3. Crea una **clave JSON** y descárgala.
+4. Habilita la **Google Drive API** en el proyecto.
+5. Comparte la carpeta de Drive (`1d7Uj4dMx4USMNum...`) con el `client_email`
+   de la SA, en modo **Editor**.
+6. (Opcional) Comparte también los Google Docs de las juntas con el `client_email`
+   de la SA en modo Lector si quieres soporte de docs privados.
+7. En EasyPanel → servicio → Environment:
+   - `GOOGLE_SA_JSON` = el JSON completo (una sola línea, con `\n` literales en
+     `private_key`).
+   - `DRIVE_FOLDER_ID` = el ID de la carpeta.
 
 ## Desarrollo local
 
-### Solo el dashboard (más rápido)
-
 ```bash
-cp .env.example .env.local
+cp .env.example .env.local       # rellena claves
 npm install
-npm run dev          # http://localhost:3000
+npm run dev                      # http://localhost:3000
 ```
 
-`/api/quote-direct` necesitará un builder corriendo en `ZEBRA_API_URL`. En dev
-lo más simple es correr el Python en paralelo:
-
-### Builder en paralelo
+El builder Python en paralelo (otra terminal):
 
 ```bash
 cd services/zebra-api
@@ -85,65 +94,43 @@ pip install -r requirements.txt
 uvicorn zebra_api:app --reload --port 8080
 ```
 
-### Todo unificado en Docker
+O todo unificado con Docker:
 
 ```bash
 docker build -t coti-auto .
-docker run --rm -p 3000:3000 -p 8080:8080 \
+docker run --rm -p 3000:3000 \
   -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e GOOGLE_SA_JSON="$(cat sa.json)" \
   coti-auto
 ```
 
-## Despliegue en EasyPanel (modo unificado, recomendado)
+## Despliegue en EasyPanel
 
-1. **Una sola App** tipo *Dockerfile*, apuntando a este repo, rama
+1. **Una sola App** tipo *Dockerfile*, apuntando a este repo y a la rama
    `claude/zebra-quotes-dashboard-j8Pvj`.
 2. **Build path:** `/` (raíz).
-3. **Domains/Proxy:** publica el puerto **3000** (el dashboard).
-4. **Environment:** al menos `ANTHROPIC_API_KEY`. Opcionalmente `ZEBRA_API_KEY`
-   si quieres autenticar el builder interno.
-5. **(Opcional)** si quieres que `n8n` también pueda llamar al builder:
-   publica el puerto **8080** con su propio dominio. Sin esto, el builder solo
-   es accesible desde el mismo contenedor.
-6. **Implementar** (no Restart). Una vez verde, puedes apagar el servicio
-   standalone `zebra-api` viejo si quedaba aparte.
+3. **Domains/Proxy:** publica el puerto **3000**.
+4. **Environment:** al menos `ANTHROPIC_API_KEY` + `GOOGLE_SA_JSON`.
+5. **Implementar** (no Restart).
+6. Verifica logs:
+   ```
+   [coti-auto] starting build <tag>
+   [coti-auto] node     -> 0.0.0.0:3000
+   [coti-auto] uvicorn  -> 0.0.0.0:8080 (cwd=/app/python)
+   INFO:     Uvicorn running on http://0.0.0.0:8080
+    ▲ Next.js 15.5.15
+    ✓ Ready in ...ms
+   ```
+7. Una vez verde, **apaga los servicios viejos** de EasyPanel:
+   `zebra-api` standalone y `n8n` (si solo se usaba para este flujo).
 
-## Migración n8n → código (Fase 2)
+## Errores posibles
 
-El endpoint `/api/quote-direct` ya implementa los pasos 1-7 del flujo n8n:
-
-- Descarga la transcripción del Doc.
-- Llama a Claude con el prompt v3.2 cacheado.
-- Valida con zod (rechaza JSON mal formado con `422 + schema_issues`).
-- Llama al builder local.
-- Devuelve los binarios.
-
-Lo que falta para apagar n8n:
-
-- Subida a Drive con cuenta de servicio (Fase 2.1).
-- Log en Supabase (Fase 2.2).
-- Wiring del frontend para usar `/api/quote-direct` por default.
-
-## Cómo probar `/api/quote-direct`
-
-```bash
-curl -sS http://localhost:3000/api/quote-direct \
-  -H 'content-type: application/json' \
-  -d '{"account":"Floresta Salvia","meeting_url":"https://docs.google.com/document/d/<ID>/edit"}' \
-  | jq '{status, slug, docx: .docx.filename, xlsx: .xlsx.filename, usage}'
-```
-
-Para guardar el DOCX:
-
-```bash
-curl -sS ... | jq -r '.docx.base64' | base64 -d > cotizacion.docx
-```
-
-Errores claros que puede devolver:
-
-- `400 stage=parse_url` → la URL no es un Google Doc reconocible.
-- `400 stage=fetch` → el Doc no está compartido como "cualquiera con el link".
-- `422 stage=schema_validate` → Claude rompió el esquema; el body trae
-  `schema_issues` con los campos que fallaron.
-- `502 Claude falló` → cualquier error de Anthropic.
-- `502 Builder falló` → uvicorn no respondió en `ZEBRA_API_URL`.
+| Status | Significado |
+|---|---|
+| `400 stage=parse_url` | El meeting_url no es un Google Doc reconocible. |
+| `400 stage=fetch` | El Doc no es accesible para la SA ni público. |
+| `422 stage=schema_validate` + `schema_issues` | Claude rompió el schema; el body trae qué campo falló. |
+| `502 Claude falló` | Error de Anthropic. |
+| `502 Builder falló` | uvicorn no respondió. |
+| `502 Subida a Drive falló` | La SA no tiene permiso sobre la carpeta o la API está deshabilitada. |
