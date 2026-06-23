@@ -13,6 +13,13 @@ export type QuoteResult = {
   evaluation_status?: "ok" | "no_aplicable" | "skipped";
   evaluation_score?: number;
   evaluation_verdict?: "no_cotizar" | "llenar_gaps" | "cotizar" | "excelente";
+
+  // Branch alterno: Claude devolvió diagnostico_preliminar porque la
+  // transcripción no traía info mínima para cotizar.
+  razon?: string;
+  preguntas_criticas?: string[];
+  lo_que_si_entendimos?: string;
+
   raw?: unknown;
 };
 

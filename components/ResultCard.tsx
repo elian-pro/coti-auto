@@ -17,20 +17,76 @@ export function ResultCard({
   onReset: () => void;
 }) {
   const { docs_url, sheets_url, pdf_url, evaluation_url } = result;
-  const hasAnything = Boolean(docs_url || sheets_url || pdf_url || evaluation_url);
+  const hasFiles = Boolean(docs_url || sheets_url || pdf_url || evaluation_url);
+  const isPreliminar = Boolean(
+    result.razon || (result.preguntas_criticas && result.preguntas_criticas.length),
+  );
 
+  // CASO 1: Claude devolvió diagnostico_preliminar (datos insuficientes)
+  if (!hasFiles && isPreliminar) {
+    return (
+      <div className="card p-8 sm:p-10">
+        <div className="mb-6">
+          <p className="eyebrow mb-3">Datos insuficientes</p>
+          <h2 className="text-h2 font-semibold text-ink">{account}</h2>
+          <p className="mt-3 text-sm text-ink-500">
+            La transcripción no tenía información mínima para construir una propuesta
+            sólida. Antes de cotizar conviene volver a hablar con el prospecto.
+          </p>
+        </div>
+
+        {result.razon ? (
+          <section className="mb-6">
+            <p className="eyebrow mb-2">Por qué</p>
+            <p className="text-sm text-ink">{result.razon}</p>
+          </section>
+        ) : null}
+
+        {result.preguntas_criticas && result.preguntas_criticas.length > 0 ? (
+          <section className="mb-6">
+            <p className="eyebrow mb-2">Preguntas críticas pendientes</p>
+            <ul className="space-y-2 text-sm text-ink">
+              {result.preguntas_criticas.map((q, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-ink-400">·</span>
+                  <span>{q}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {result.lo_que_si_entendimos ? (
+          <section className="mb-6">
+            <p className="eyebrow mb-2">Lo que sí entendimos</p>
+            <p className="text-sm text-ink-500">{result.lo_que_si_entendimos}</p>
+          </section>
+        ) : null}
+
+        <div className="mt-8 flex items-center justify-between border-t border-ink-200 pt-6">
+          <span className="eyebrow">Recontactar antes de cotizar</span>
+          <button type="button" onClick={onReset} className="btn-ghost text-sm">
+            Nueva cotización
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // CASO 2: éxito (con uno o más archivos)
   return (
     <div className="card p-8 sm:p-10">
       <div className="mb-8">
         <p className="eyebrow mb-3">Cotización lista</p>
         <h2 className="text-h2 font-semibold text-ink">{account}</h2>
-        {hasAnything ? (
+        {hasFiles ? (
           <p className="mt-3 text-sm text-ink-500">
             Los documentos se generaron en Drive. Ábrelos para revisar, editar o compartir.
           </p>
         ) : (
           <p className="mt-3 text-sm text-ink-500">
-            El proceso respondió, pero sin enlaces. Revisa los logs del contenedor.
+            El proceso respondió, pero sin enlaces. Revisa los logs del contenedor para ver
+            si falló la subida a Drive o si Claude regresó algo inesperado.
           </p>
         )}
       </div>
@@ -54,7 +110,7 @@ export function ResultCard({
         </div>
       ) : null}
 
-      {hasAnything ? (
+      {hasFiles ? (
         <div className="space-y-3">
           {docs_url ? (
             <a
