@@ -1,6 +1,9 @@
+export type QuoteMode = "full" | "quote_only" | "eval_only";
+
 export type QuoteRequest = {
   account: string;
   meeting_url: string;
+  mode?: QuoteMode;
 };
 
 export type QuoteResult = {

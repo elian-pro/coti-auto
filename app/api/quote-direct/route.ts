@@ -22,26 +22,20 @@ import {
 } from "@/lib/zebra-api";
 import { loadSystemPrompt } from "@/prompts/cotizacion/system_prompt";
 import { loadEvalSystemPrompt } from "@/prompts/evaluacion/system_prompt";
+import type { QuoteMode } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Endpoint unificado. Una sola corrida → dos análisis EN PARALELO:
-//   1. Descarga la transcripción del Google Doc (1 sola vez).
-//   2. Llama a Claude DOS veces en paralelo:
-//      - cotización (prompt v3.2)  → proposal_data
-//      - evaluación (prompt v2.3) → evaluation_data
-//   3. Valida ambos JSON con sus schemas zod.
-//   4. Llama al builder local en paralelo:
-//      - /generate         → DOCX cotización
-//      - /generate-excel   → XLSX calculadora (solo si aplica)
-//      - /evaluate         → PDF evaluación
-//   5. Sube todo a Drive con la SA.
-//   6. Devuelve URLs.
+// Endpoint unificado con 3 modos según `mode` en el body:
+//   - "full"       (default) → cotización + diagnóstico en paralelo
+//   - "quote_only"           → solo cotización (DOCX + Sheet)
+//   - "eval_only"            → solo diagnóstico (PDF evaluador)
 
 type Body = {
   account?: unknown;
   meeting_url?: unknown;
+  mode?: unknown;
 };
 
 const FOLDER_COTIZACIONES =
@@ -49,12 +43,12 @@ const FOLDER_COTIZACIONES =
   process.env.DRIVE_FOLDER_ID ??
   "1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD";
 
-// Las evaluaciones idealmente viven en otra carpeta. Si no se configura, caen
-// en la misma de cotizaciones (compat).
 const FOLDER_EVALUACIONES =
   process.env.DRIVE_FOLDER_ID_EVALUACIONES ??
   process.env.DRIVE_FOLDER_ID ??
   FOLDER_COTIZACIONES;
+
+const VALID_MODES: QuoteMode[] = ["full", "quote_only", "eval_only"];
 
 export async function POST(request: Request) {
   let body: Body;
@@ -67,6 +61,10 @@ export async function POST(request: Request) {
   const account = typeof body.account === "string" ? body.account.trim() : "";
   const meetingUrl =
     typeof body.meeting_url === "string" ? body.meeting_url.trim() : "";
+  const mode: QuoteMode =
+    typeof body.mode === "string" && (VALID_MODES as string[]).includes(body.mode)
+      ? (body.mode as QuoteMode)
+      : "full";
 
   if (!account) {
     return NextResponse.json(
@@ -80,6 +78,9 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const wantCotizacion = mode === "full" || mode === "quote_only";
+  const wantEvaluacion = mode === "full" || mode === "eval_only";
 
   const slug =
     account
@@ -104,19 +105,21 @@ export async function POST(request: Request) {
 
   const userContent = `PROSPECTO: ${account}\n\n--- TRANSCRIPCIÓN / RESUMEN ---\n${transcriptText}`;
 
-  // 2. Claude en paralelo: cotización + evaluación
-  let cotResult, evalResult;
+  // 2. Claude — solo las llamadas que el modo requiere
+  type ClaudeResult = Awaited<ReturnType<typeof callClaude>>;
+  let cotResult: ClaudeResult | null = null;
+  let evalResult: ClaudeResult | null = null;
   try {
-    [cotResult, evalResult] = await Promise.all([
-      callClaude({
-        systemPrompt: loadSystemPrompt(),
-        userContent,
-      }),
-      callClaude({
-        systemPrompt: loadEvalSystemPrompt(),
-        userContent,
-      }),
+    const [cot, ev] = await Promise.all([
+      wantCotizacion
+        ? callClaude({ systemPrompt: loadSystemPrompt(), userContent })
+        : Promise.resolve(null),
+      wantEvaluacion
+        ? callClaude({ systemPrompt: loadEvalSystemPrompt(), userContent })
+        : Promise.resolve(null),
     ]);
+    cotResult = cot;
+    evalResult = ev;
   } catch (error) {
     return NextResponse.json(
       {
@@ -126,82 +129,93 @@ export async function POST(request: Request) {
     );
   }
 
-  // 3. Validar JSONs
-  let cotParsed;
-  try {
-    cotParsed = parseClaudeResponse(cotResult.rawText);
-  } catch (error) {
-    if (error instanceof ProposalParseError) {
-      return NextResponse.json(
-        {
-          error: `Cotización: ${error.message}`,
-          stage: error.stage,
-          raw_preview: error.rawText,
-          schema_issues: error.zodError?.issues,
-        },
-        { status: 422 },
-      );
-    }
-    throw error;
-  }
-
-  let evalParsed;
-  try {
-    evalParsed = parseEvaluationResponse(evalResult.rawText);
-  } catch (error) {
-    if (error instanceof EvaluationParseError) {
-      // No abortamos toda la corrida si solo falla la evaluación; seguimos
-      // con la cotización y reportamos el problema en la respuesta.
-      evalParsed = {
-        kind: "fallback" as const,
-        data: {
-          status: "evaluacion_no_aplicable" as const,
-          razon: `Schema del evaluador no validó: ${error.message}`,
-        },
-        _error: error,
-      };
-    } else {
+  // 3. Validar JSON de cotización (si aplica)
+  let cotParsed: ReturnType<typeof parseClaudeResponse> | null = null;
+  if (wantCotizacion && cotResult) {
+    try {
+      cotParsed = parseClaudeResponse(cotResult.rawText);
+    } catch (error) {
+      if (error instanceof ProposalParseError) {
+        return NextResponse.json(
+          {
+            error: `Cotización: ${error.message}`,
+            stage: error.stage,
+            raw_preview: error.rawText,
+            schema_issues: error.zodError?.issues,
+          },
+          { status: 422 },
+        );
+      }
       throw error;
     }
   }
 
-  // 3b. Si la cotización vino como "datos insuficientes", no construimos nada
-  if (cotParsed.kind === "diagnostico_preliminar") {
+  // Si la cotización vino como "datos insuficientes", devolvemos eso tal cual.
+  if (cotParsed && cotParsed.kind === "diagnostico_preliminar") {
     return NextResponse.json(
       {
         ...cotParsed.data,
+        mode,
         usage: {
-          cotizacion: cotResult.usage,
-          evaluacion: evalResult.usage,
+          cotizacion: cotResult?.usage,
+          evaluacion: evalResult?.usage,
         },
       },
       { status: 200 },
     );
   }
 
-  // 4. Builder en paralelo
-  const wantsExcel = shouldGenerateExcel(cotParsed.data);
+  // 4. Validar JSON del evaluador (si aplica). No aborta si falla.
+  type EvalParsedShape =
+    | (ReturnType<typeof parseEvaluationResponse> & { _error?: never })
+    | {
+        kind: "fallback";
+        data: { status: "evaluacion_no_aplicable"; razon: string };
+        _error?: EvaluationParseError;
+      };
+  let evalParsed: EvalParsedShape | null = null;
+  if (wantEvaluacion && evalResult) {
+    try {
+      evalParsed = parseEvaluationResponse(evalResult.rawText);
+    } catch (error) {
+      if (error instanceof EvaluationParseError) {
+        evalParsed = {
+          kind: "fallback",
+          data: {
+            status: "evaluacion_no_aplicable",
+            razon: `Schema del evaluador no validó: ${error.message}`,
+          },
+          _error: error,
+        };
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // 5. Builder en paralelo según lo que se haya validado
+  const proposalData =
+    cotParsed && cotParsed.kind === "proposal" ? cotParsed.data : null;
+  const wantsExcel = proposalData ? shouldGenerateExcel(proposalData) : false;
   const evalDataForBuilder =
-    evalParsed.kind === "evaluation" ? evalParsed.data : null;
+    evalParsed && evalParsed.kind === "evaluation" ? evalParsed.data : null;
 
-  type Maybe<T> = T | null;
-
-  type BuildResult = {
-    docx: Awaited<ReturnType<typeof generateDocx>>;
-    xlsx: Maybe<Awaited<ReturnType<typeof generateXlsx>>>;
-    evaluation: Maybe<Awaited<ReturnType<typeof generateEvaluationPdf>>>;
-  };
-
-  let built: BuildResult;
+  let docxFile: Awaited<ReturnType<typeof generateDocx>> | null = null;
+  let xlsxFile: Awaited<ReturnType<typeof generateXlsx>> | null = null;
+  let evalFile: Awaited<ReturnType<typeof generateEvaluationPdf>> | null = null;
   try {
-    const [docx, xlsx, evaluation] = await Promise.all([
-      generateDocx(cotParsed.data, slug),
-      wantsExcel ? generateXlsx(cotParsed.data, slug) : Promise.resolve(null),
+    const [docx, xlsx, ev] = await Promise.all([
+      proposalData ? generateDocx(proposalData, slug) : Promise.resolve(null),
+      proposalData && wantsExcel
+        ? generateXlsx(proposalData, slug)
+        : Promise.resolve(null),
       evalDataForBuilder
         ? generateEvaluationPdf(evalDataForBuilder, slug)
         : Promise.resolve(null),
     ]);
-    built = { docx, xlsx, evaluation };
+    docxFile = docx;
+    xlsxFile = xlsx;
+    evalFile = ev;
   } catch (error) {
     return NextResponse.json(
       {
@@ -211,35 +225,39 @@ export async function POST(request: Request) {
     );
   }
 
-  // 5. Subir a Drive (también en paralelo)
+  // 6. Subir a Drive
   let docsUrl: string | undefined;
   let sheetsUrl: string | undefined;
   let pdfUrl: string | undefined;
   let evaluationUrl: string | undefined;
   try {
     const [doc, sheet, evalPdf] = await Promise.all([
-      uploadDocxAsGoogleDoc(
-        built.docx.buffer,
-        built.docx.filename.replace(/\.docx$/i, ""),
-        FOLDER_COTIZACIONES,
-      ),
-      built.xlsx
-        ? uploadXlsxAsGoogleSheet(
-            built.xlsx.buffer,
-            built.xlsx.filename.replace(/\.xlsx$/i, ""),
+      docxFile
+        ? uploadDocxAsGoogleDoc(
+            docxFile.buffer,
+            docxFile.filename.replace(/\.docx$/i, ""),
             FOLDER_COTIZACIONES,
           )
         : Promise.resolve(null),
-      built.evaluation
+      xlsxFile
+        ? uploadXlsxAsGoogleSheet(
+            xlsxFile.buffer,
+            xlsxFile.filename.replace(/\.xlsx$/i, ""),
+            FOLDER_COTIZACIONES,
+          )
+        : Promise.resolve(null),
+      evalFile
         ? uploadPdfAsIs(
-            built.evaluation.buffer,
-            built.evaluation.filename.replace(/\.pdf$/i, ""),
+            evalFile.buffer,
+            evalFile.filename.replace(/\.pdf$/i, ""),
             FOLDER_EVALUACIONES,
           )
         : Promise.resolve(null),
     ]);
-    docsUrl = doc.docs_url;
-    pdfUrl = `https://docs.google.com/document/d/${doc.id}/export?format=pdf`;
+    if (doc) {
+      docsUrl = doc.docs_url;
+      pdfUrl = `https://docs.google.com/document/d/${doc.id}/export?format=pdf`;
+    }
     if (sheet) sheetsUrl = sheet.docs_url;
     if (evalPdf) evaluationUrl = evalPdf.docs_url;
   } catch (error) {
@@ -254,36 +272,41 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       status: "ok",
+      mode,
       account,
       slug,
       docs_url: docsUrl,
       sheets_url: sheetsUrl,
       pdf_url: pdfUrl,
       evaluation_url: evaluationUrl,
-      evaluation_status:
-        evalParsed.kind === "evaluation"
+      evaluation_status: wantEvaluacion
+        ? evalParsed && evalParsed.kind === "evaluation"
           ? "ok"
-          : evalParsed.kind === "fallback"
-            ? "no_aplicable"
-            : "skipped",
+          : "no_aplicable"
+        : "skipped",
       evaluation_score:
-        evalParsed.kind === "evaluation" ? evalParsed.data.score_total : undefined,
+        evalParsed && evalParsed.kind === "evaluation"
+          ? evalParsed.data.score_total
+          : undefined,
       evaluation_verdict:
-        evalParsed.kind === "evaluation" ? evalParsed.data.veredicto : undefined,
+        evalParsed && evalParsed.kind === "evaluation"
+          ? evalParsed.data.veredicto
+          : undefined,
       evaluation_error:
-        evalParsed.kind === "fallback" ? evalParsed.data.razon : undefined,
+        evalParsed && evalParsed.kind === "fallback"
+          ? evalParsed.data.razon
+          : undefined,
       evaluation_schema_issues:
-        evalParsed.kind === "fallback" && "_error" in evalParsed
-          ? (evalParsed as { _error?: { zodError?: { issues?: unknown } } })._error
-              ?.zodError?.issues
+        evalParsed && evalParsed.kind === "fallback" && evalParsed._error
+          ? evalParsed._error.zodError?.issues
           : undefined,
       evaluation_raw_preview:
-        evalParsed.kind === "fallback" && "_error" in evalParsed
-          ? (evalParsed as { _error?: { rawText?: string } })._error?.rawText
+        evalParsed && evalParsed.kind === "fallback" && evalParsed._error
+          ? evalParsed._error.rawText
           : undefined,
       usage: {
-        cotizacion: cotResult.usage,
-        evaluacion: evalResult.usage,
+        cotizacion: cotResult?.usage,
+        evaluacion: evalResult?.usage,
       },
     },
     { status: 200 },

@@ -1,18 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import type { QuoteMode } from "@/lib/types";
+
+const MODE_OPTIONS: { value: QuoteMode; label: string; hint: string }[] = [
+  { value: "full",       label: "Cotización + Diagnóstico", hint: "Genera ambos documentos en paralelo" },
+  { value: "quote_only", label: "Solo cotización",          hint: "DOCX + calculadora si aplica" },
+  { value: "eval_only",  label: "Solo diagnóstico",         hint: "PDF con scoring de la llamada" },
+];
+
+const CTA_LABEL: Record<QuoteMode, string> = {
+  full:       "Generar análisis completo",
+  quote_only: "Generar cotización",
+  eval_only:  "Generar diagnóstico",
+};
 
 export function QuoteForm({
   onSubmit,
   isSubmitting,
   errorMessage,
 }: {
-  onSubmit: (values: { account: string; meeting_url: string }) => void;
+  onSubmit: (values: { account: string; meeting_url: string; mode: QuoteMode }) => void;
   isSubmitting: boolean;
   errorMessage?: string;
 }) {
   const [account, setAccount] = useState("");
   const [meetingUrl, setMeetingUrl] = useState("");
+  const [mode, setMode] = useState<QuoteMode>("full");
   const [touched, setTouched] = useState(false);
 
   const trimmedAccount = account.trim();
@@ -27,7 +41,7 @@ export function QuoteForm({
         event.preventDefault();
         setTouched(true);
         if (!canSubmit) return;
-        onSubmit({ account: trimmedAccount, meeting_url: trimmedUrl });
+        onSubmit({ account: trimmedAccount, meeting_url: trimmedUrl, mode });
       }}
     >
       <div className="card p-8 sm:p-10">
@@ -35,12 +49,14 @@ export function QuoteForm({
           <p className="eyebrow mb-3">Nueva cotización</p>
           <h2 className="text-h2 font-semibold text-ink">Datos de la junta</h2>
           <p className="mt-3 text-sm text-ink-500">
-            Pega la liga de la junta en Drive y el nombre de la cuenta. En aproximadamente
-            2 minutos generamos el documento.
+            Pega la liga de la junta en Drive y el nombre de la cuenta. Elige qué quieres
+            generar.
           </p>
         </div>
 
         <div className="space-y-6">
+          <ModeSelector value={mode} onChange={setMode} disabled={isSubmitting} />
+
           <Field
             label="Nombre de la cuenta"
             error={touched && !trimmedAccount ? "Requerido" : undefined}
@@ -89,12 +105,58 @@ export function QuoteForm({
           ) : null}
 
           <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
-            <span>{isSubmitting ? "Enviando" : "Generar cotización"}</span>
+            <span>{isSubmitting ? "Enviando" : CTA_LABEL[mode]}</span>
             <ArrowRight />
           </button>
         </div>
       </div>
     </form>
+  );
+}
+
+function ModeSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: QuoteMode;
+  onChange: (mode: QuoteMode) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <fieldset className="block" disabled={disabled}>
+      <legend className="mb-2 text-sm font-medium text-ink">Qué generar</legend>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {MODE_OPTIONS.map((opt) => {
+          const active = value === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              aria-pressed={active}
+              className={[
+                "flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition",
+                active
+                  ? "border-ink bg-ink text-white"
+                  : "border-ink-200 bg-white text-ink hover:border-ink",
+              ].join(" ")}
+              style={{ transitionTimingFunction: "cubic-bezier(.16,1,.3,1)" }}
+            >
+              <span className="text-sm font-semibold leading-tight">{opt.label}</span>
+              <span
+                className={[
+                  "text-xs leading-tight",
+                  active ? "text-white/70" : "text-ink-500",
+                ].join(" ")}
+              >
+                {opt.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

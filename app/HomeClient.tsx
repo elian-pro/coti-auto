@@ -7,24 +7,28 @@ import { QuoteForm } from "@/components/QuoteForm";
 import { ResultCard } from "@/components/ResultCard";
 import { ZebraFrame } from "@/components/ZebraFrame";
 import { ZebraLogo } from "@/components/ZebraLogo";
-import type { QuoteResult } from "@/lib/types";
+import type { QuoteMode, QuoteResult } from "@/lib/types";
 
 type Status = "idle" | "loading" | "done";
 
 export default function HomeClient() {
   const [status, setStatus] = useState<Status>("idle");
   const [account, setAccount] = useState("");
+  const [mode, setMode] = useState<QuoteMode>("full");
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
   async function handleSubmit({
     account: accountValue,
     meeting_url,
+    mode: modeValue,
   }: {
     account: string;
     meeting_url: string;
+    mode: QuoteMode;
   }) {
     setAccount(accountValue);
+    setMode(modeValue);
     setErrorMessage(undefined);
     setStatus("loading");
 
@@ -32,7 +36,11 @@ export default function HomeClient() {
       const response = await fetch("/api/quote-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account: accountValue, meeting_url }),
+        body: JSON.stringify({
+          account: accountValue,
+          meeting_url,
+          mode: modeValue,
+        }),
       });
 
       const contentType = response.headers.get("content-type") ?? "";
@@ -98,7 +106,9 @@ export default function HomeClient() {
                 />
               ) : null}
 
-              {status === "loading" ? <LoadingScreen account={account} /> : null}
+              {status === "loading" ? (
+                <LoadingScreen account={account} mode={mode} />
+              ) : null}
 
               {status === "done" && result ? (
                 <ResultCard account={account} result={result} onReset={handleReset} />
