@@ -54,7 +54,9 @@ Formulario web
 
 | Variable | Default | Notas |
 |---|---|---|
-| `DRIVE_FOLDER_ID` | `1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD` | ID de la carpeta de Drive de cotizaciones. |
+| `DRIVE_FOLDER_ID_COTIZACIONES` | `1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD` | Carpeta para DOCX cotización + XLSX calculadora. |
+| `DRIVE_FOLDER_ID_EVALUACIONES` | _(opcional)_ | Carpeta para el PDF del diagnóstico. Si vacío, cae en la de cotizaciones. |
+| `DRIVE_FOLDER_ID` | _(legacy)_ | Fallback común si las dos de arriba no están seteadas. |
 | `ANTHROPIC_MODEL` | `claude-opus-4-7` | Modelo de Claude. |
 | `ANTHROPIC_MAX_TOKENS` | `16000` | Tope de tokens de salida. |
 | `ZEBRA_API_URL` | `http://127.0.0.1:8080` | Builder local. Solo cambia si separas servicios. |
@@ -68,14 +70,21 @@ Formulario web
 2. **Crear cuenta de servicio**. Nombre sugerido: `coti-auto`.
 3. Crea una **clave JSON** y descárgala.
 4. Habilita la **Google Drive API** en el proyecto.
-5. Comparte la carpeta de Drive (`1d7Uj4dMx4USMNum...`) con el `client_email`
-   de la SA, en modo **Editor**.
+5. Crea **dos carpetas en Drive** (recomendado):
+   - Una para cotizaciones (DOCX + Sheets).
+   - Otra para diagnósticos (PDF).
+   Comparte ambas con el `client_email` de la SA, en modo **Editor**. Si
+   solo quieres una, no pasa nada: deja `DRIVE_FOLDER_ID_EVALUACIONES`
+   vacía y todo cae en la misma.
 6. (Opcional) Comparte también los Google Docs de las juntas con el `client_email`
    de la SA en modo Lector si quieres soporte de docs privados.
 7. En EasyPanel → servicio → Environment:
    - `GOOGLE_SA_JSON` = el JSON completo (una sola línea, con `\n` literales en
      `private_key`).
-   - `DRIVE_FOLDER_ID` = el ID de la carpeta.
+   - `DRIVE_FOLDER_ID_COTIZACIONES` = ID de la carpeta de cotizaciones.
+   - `DRIVE_FOLDER_ID_EVALUACIONES` = ID de la carpeta de diagnósticos.
+   - `NEXT_PUBLIC_DRIVE_FOLDER_URL_COTIZACIONES` y `..._EVALUACIONES` para
+     que los dos botones del header apunten a cada carpeta.
 
 ## Desarrollo local
 

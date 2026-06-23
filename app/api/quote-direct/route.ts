@@ -44,8 +44,17 @@ type Body = {
   meeting_url?: unknown;
 };
 
-const DRIVE_FOLDER_ID =
-  process.env.DRIVE_FOLDER_ID ?? "1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD";
+const FOLDER_COTIZACIONES =
+  process.env.DRIVE_FOLDER_ID_COTIZACIONES ??
+  process.env.DRIVE_FOLDER_ID ??
+  "1d7Uj4dMx4USMNum-lkD_2w33OAeQgkCD";
+
+// Las evaluaciones idealmente viven en otra carpeta. Si no se configura, caen
+// en la misma de cotizaciones (compat).
+const FOLDER_EVALUACIONES =
+  process.env.DRIVE_FOLDER_ID_EVALUACIONES ??
+  process.env.DRIVE_FOLDER_ID ??
+  FOLDER_COTIZACIONES;
 
 export async function POST(request: Request) {
   let body: Body;
@@ -212,20 +221,20 @@ export async function POST(request: Request) {
       uploadDocxAsGoogleDoc(
         built.docx.buffer,
         built.docx.filename.replace(/\.docx$/i, ""),
-        DRIVE_FOLDER_ID,
+        FOLDER_COTIZACIONES,
       ),
       built.xlsx
         ? uploadXlsxAsGoogleSheet(
             built.xlsx.buffer,
             built.xlsx.filename.replace(/\.xlsx$/i, ""),
-            DRIVE_FOLDER_ID,
+            FOLDER_COTIZACIONES,
           )
         : Promise.resolve(null),
       built.evaluation
         ? uploadPdfAsIs(
             built.evaluation.buffer,
             built.evaluation.filename.replace(/\.pdf$/i, ""),
-            DRIVE_FOLDER_ID,
+            FOLDER_EVALUACIONES,
           )
         : Promise.resolve(null),
     ]);
