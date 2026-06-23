@@ -4,214 +4,271 @@ zebra_excel_annex.py
 Genera el Excel anexo de Proyección de Inversión para acompañar la propuesta DOCX.
 Replica la estructura de las dos hojas del DEMO original:
   - Hoja 1: Calculadora de Inversión (con inputs editables y fórmulas)
-  - Hoja 2: Plan de Inversión — Proyección a 12 meses
+  - Hoja 2: Plan de Inversión, Proyección a 12 meses
 
-Uso:
-    from zebra_excel_annex import generate_investment_excel
-    generate_investment_excel(calc_output, plan_output, output_path)
+Estilo: alineado al Zebra Design System (ink monocromático, sin amarillo de
+chrome, hairline borders, eyebrows en JetBrains Mono, KPI principal con fondo
+ink).
 """
 
 from openpyxl import Workbook
 from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, NamedStyle
+    Font, PatternFill, Alignment, Border, Side
 )
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import CellIsRule
 
 
-# Paleta Zebra
-YELLOW = "F9D626"
-BLACK = "111111"
-DARK_GREY = "333333"
-MID_GREY = "888888"
-LIGHT_GREY = "DDDDDD"
-BG_LIGHT = "F5F5F5"
-WHITE = "FFFFFF"
+# =============================================================================
+# Paleta Zebra (Design System v2.0, tema light)
+# =============================================================================
+
+INK         = "0A0A0A"  # --text / --accent
+INK_700     = "262626"  # hover, secondary emphasis
+INK_500     = "737373"  # muted text (placeholders, hints, AA legible)
+INK_300     = "CBD5E1"  # light borders
+INK_200     = "E5E5E5"  # default borders (hairline)
+INK_100     = "F5F7FA"  # subtle backgrounds
+INK_50      = "F9FAFB"  # --surface-2 (recessed sections)
+BONE        = "FFFFFF"  # --surface
+
+# Fuentes del DS. Si el sistema no las tiene, Excel/Sheets caen a Calibri /
+# Roboto, ambas aceptables. Google Sheets sí tiene Inter por default.
+SANS_FAMILY = "Inter"
+MONO_FAMILY = "JetBrains Mono"
 
 
-def _border(color=LIGHT_GREY, style="thin"):
-    side = Side(border_style=style, color=color)
+# =============================================================================
+# Helpers de estilo
+# =============================================================================
+
+def _hairline(top=False, bottom=False, left=False, right=False, color=INK_200):
+    side = Side(border_style="thin", color=color)
+    return Border(
+        top=side if top else None,
+        bottom=side if bottom else None,
+        left=side if left else None,
+        right=side if right else None,
+    )
+
+
+def _full_hairline(color=INK_200):
+    side = Side(border_style="thin", color=color)
     return Border(left=side, right=side, top=side, bottom=side)
-
-
-def _bottom_border(color=LIGHT_GREY, style="thin"):
-    side = Side(border_style=style, color=color)
-    return Border(bottom=side)
 
 
 def _fill(color):
     return PatternFill(start_color=color, end_color=color, fill_type="solid")
 
 
-def _label_cell(cell, text, bold=False, size=10, color=DARK_GREY, fill_color=None):
+def _label_cell(cell, text, bold=False, size=10, color=INK, fill_color=None,
+                family=SANS_FAMILY, align="left"):
     cell.value = text
-    cell.font = Font(name="Arial", size=size, bold=bold, color=color)
-    cell.alignment = Alignment(horizontal="left", vertical="center")
+    cell.font = Font(name=family, size=size, bold=bold, color=color)
+    cell.alignment = Alignment(horizontal=align, vertical="center")
     if fill_color:
         cell.fill = _fill(fill_color)
 
 
-def _value_cell(cell, value, bold=False, size=10, color=DARK_GREY,
-                fill_color=None, fmt=None, align="right"):
+def _value_cell(cell, value, bold=False, size=10, color=INK,
+                fill_color=None, fmt=None, align="right", family=MONO_FAMILY,
+                border=None):
     cell.value = value
-    cell.font = Font(name="Arial", size=size, bold=bold, color=color)
+    cell.font = Font(name=family, size=size, bold=bold, color=color)
     cell.alignment = Alignment(horizontal=align, vertical="center")
     if fill_color:
         cell.fill = _fill(fill_color)
     if fmt:
         cell.number_format = fmt
+    if border is not None:
+        cell.border = border
 
 
-def _header_cell(cell, text, fill_color=BLACK, font_color=YELLOW, size=10):
+def _eyebrow(cell, text):
+    """Section label: JetBrains Mono, 9pt, uppercase, tracking implícito, muted."""
+    cell.value = text.upper()
+    cell.font = Font(name=MONO_FAMILY, size=9, bold=True, color=INK_500)
+    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+
+def _title_cell(cell, text, size=14):
+    """Title: Inter semibold, ink color, sin fondo."""
     cell.value = text
-    cell.font = Font(name="Arial", size=size, bold=True, color=font_color)
-    cell.fill = _fill(fill_color)
+    cell.font = Font(name=SANS_FAMILY, size=size, bold=True, color=INK)
+    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+
+def _subtitle_cell(cell, text):
+    cell.value = text
+    cell.font = Font(name=SANS_FAMILY, size=9, color=INK_500, italic=False)
+    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+
+def _input_cell(cell, value, fmt=None):
+    """Celda editable (input del modelo). Fondo recesado + hairline ink."""
+    cell.value = value
+    cell.font = Font(name=MONO_FAMILY, size=10, bold=True, color=INK)
+    cell.alignment = Alignment(horizontal="right", vertical="center")
+    cell.fill = _fill(INK_50)
+    cell.border = _full_hairline(INK_300)
+    if fmt:
+        cell.number_format = fmt
+
+
+def _output_cell(cell, value, fmt=None, bold=True):
+    """Celda calculada. Fondo bone, hairline ink-200."""
+    cell.value = value
+    cell.font = Font(name=MONO_FAMILY, size=10, bold=bold, color=INK)
+    cell.alignment = Alignment(horizontal="right", vertical="center")
+    cell.fill = _fill(BONE)
+    cell.border = _full_hairline(INK_200)
+    if fmt:
+        cell.number_format = fmt
+
+
+def _kpi_cell(cell, value, fmt=None):
+    """KPI principal. Fondo ink (#0A0A0A), texto blanco. Stat emphasis card."""
+    cell.value = value
+    cell.font = Font(name=MONO_FAMILY, size=11, bold=True, color=BONE)
+    cell.alignment = Alignment(horizontal="right", vertical="center")
+    cell.fill = _fill(INK)
+    if fmt:
+        cell.number_format = fmt
+
+
+def _kpi_label(cell, text):
+    cell.value = text
+    cell.font = Font(name=SANS_FAMILY, size=11, bold=True, color=BONE)
+    cell.alignment = Alignment(horizontal="left", vertical="center")
+    cell.fill = _fill(INK)
+
+
+def _table_header(cell, text):
+    """Header de tabla: fondo ink, texto blanco, mono, centrado."""
+    cell.value = text
+    cell.font = Font(name=MONO_FAMILY, size=9, bold=True, color=BONE)
+    cell.fill = _fill(INK)
     cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
+# =============================================================================
+# Hoja 1, Calculadora de Inversión
+# =============================================================================
+
 def _build_calc_sheet(ws, calc_output):
-    """
-    Hoja 1 — Calculadora de Inversión.
-    Reproduce la lógica del DEMO con valores del cliente.
-    Los inputs editables están marcados con celdas color amarillo claro.
-    """
     from zebra_investment_calc import (
         LEADS_DIA_POR_ASESOR, DIAS_PROMEDIO_MES,
-        VENTANA_CITA_DIAS, VENTANA_APARTADO_DIAS, VENTANA_CIERRE_DIAS,
     )
 
-    ws.title = "Calculadora de Inversion"
+    ws.title = "Calculadora"
+    ws.sheet_view.showGridLines = False
 
-    # Anchos de columna
-    widths = {"A": 2, "B": 32, "C": 16, "D": 18, "E": 2, "F": 24, "G": 16}
+    # Anchos
+    widths = {"A": 2, "B": 36, "C": 4, "D": 22, "E": 2, "F": 30, "G": 16}
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
 
-    # Título principal
-    ws.merge_cells("B2:D3")
-    title = ws["B2"]
-    _header_cell(title, "CALCULADORA DE INVERSIÓN", fill_color=BLACK, font_color=YELLOW, size=14)
+    # Título y subtítulo
+    _title_cell(ws["B2"], "Calculadora de Inversión", size=18)
+    _subtitle_cell(
+        ws["B3"],
+        "Ingeniería inversa: valor de proyecto, absorción y pauta requerida"
+    )
 
-    # Subtítulo
-    ws.merge_cells("B4:D4")
-    sub = ws["B4"]
-    _label_cell(sub, "Ingeniería inversa: Valor de Proyecto y Tiempo de Absorción",
-                size=9, color=MID_GREY)
-    sub.alignment = Alignment(horizontal="center")
+    # ===== INPUTS =====
+    _eyebrow(ws["B5"], "Inputs del modelo")
 
-    # ------ INPUTS ------
-    ws["B6"] = "INPUTS DEL MODELO"
-    ws["B6"].font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
-
-    # Inputs editables (fondo amarillo claro)
     input_rows = [
-        ("Unidades Totales", calc_output.unidades_totales, "0", 7),
-        ("Ticket Promedio", calc_output.ticket_promedio, '"$"#,##0" MXN"', 8),
-        ("Absorción del Proyecto (meses)", calc_output.absorcion_meses, "0", 9),
-        ("CPL Estimado", calc_output.cpl, '"$"#,##0" MXN"', 10),
-        ("% Inversión sobre Valor", calc_output.porcentaje_inversion, "0.00%", 11),
+        ("Unidades Totales", calc_output.unidades_totales, "0", 6),
+        ("Ticket Promedio", calc_output.ticket_promedio, '"$"#,##0" MXN"', 7),
+        ("Absorción del Proyecto (meses)", calc_output.absorcion_meses, "0", 8),
+        ("CPL Estimado", calc_output.cpl, '"$"#,##0" MXN"', 9),
+        ("% Inversión sobre Valor", calc_output.porcentaje_inversion, "0.00%", 10),
     ]
     for label, value, fmt, row in input_rows:
         _label_cell(ws[f"B{row}"], label, size=10)
-        _value_cell(ws[f"D{row}"], value, bold=True, fmt=fmt, fill_color="FFF8C9")
-        ws[f"D{row}"].border = _border(color=YELLOW)
+        _input_cell(ws[f"D{row}"], value, fmt=fmt)
 
-    # ------ TASAS DE CONVERSIÓN (editables) ------
-    ws["B13"] = "TASAS DE CONVERSIÓN"
-    ws["B13"].font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== TASAS =====
+    _eyebrow(ws["B12"], "Tasas de conversión")
 
     tasa_rows = [
-        ("% Conversión a Cita", calc_output.tasas['cita'], 14),
-        ("% Asistencia", calc_output.tasas['asistencia'], 15),
-        ("% Apartado", calc_output.tasas['apartado'], 16),
-        ("% Cierre", calc_output.tasas['cierre'], 17),
+        ("% Conversión a Cita", calc_output.tasas['cita'], 13),
+        ("% Asistencia", calc_output.tasas['asistencia'], 14),
+        ("% Apartado", calc_output.tasas['apartado'], 15),
+        ("% Cierre", calc_output.tasas['cierre'], 16),
     ]
     for label, value, row in tasa_rows:
         _label_cell(ws[f"B{row}"], label, size=10)
-        _value_cell(ws[f"D{row}"], value, bold=True, fmt="0.0%", fill_color="FFF8C9")
-        ws[f"D{row}"].border = _border(color=YELLOW)
+        _input_cell(ws[f"D{row}"], value, fmt="0.0%")
 
-    # ------ OUTPUTS CALCULADOS (con fórmulas vinculadas) ------
-    ws["B19"] = "RESULTADOS CALCULADOS"
-    ws["B19"].font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== OUTPUTS CALCULADOS =====
+    _eyebrow(ws["B18"], "Resultados calculados")
 
-    # Valor del Proyecto = Unidades × Ticket
-    _label_cell(ws["B20"], "Valor del Proyecto", size=10)
-    _value_cell(ws["D20"], "=D7*D8", bold=True, fmt='"$"#,##0" MXN"', fill_color=BG_LIGHT)
+    output_rows = [
+        ("Valor del Proyecto", "=D6*D7", '"$"#,##0" MXN"', 19),
+        ("CPA Estimado", "=D10*D7", '"$"#,##0" MXN"', 20),
+        ("Presupuesto Total", "=D19*D10", '"$"#,##0" MXN"', 21),
+        ("ROA Esperado", "=D19/D21", '0.0"x"', 22),
+        ("Unidades Objetivo Mensuales", "=D6/D8", "0.00", 23),
+    ]
+    for label, formula, fmt, row in output_rows:
+        _label_cell(ws[f"B{row}"], label, size=10)
+        _output_cell(ws[f"D{row}"], formula, fmt=fmt)
 
-    # CPA Estimado = % Inversión × Ticket
-    _label_cell(ws["B21"], "CPA Estimado", size=10)
-    _value_cell(ws["D21"], "=D11*D8", bold=True, fmt='"$"#,##0" MXN"', fill_color=BG_LIGHT)
+    # KPI principal (Inversión pauta) — ink fill, white text
+    _kpi_label(ws["B24"], "Inversión Pauta Mensual")
+    _kpi_cell(ws["D24"], "=D21/D8", fmt='"$"#,##0" MXN"')
 
-    # Presupuesto Total = Valor × % Inversión
-    _label_cell(ws["B22"], "Presupuesto Total", size=10)
-    _value_cell(ws["D22"], "=D20*D11", bold=True, fmt='"$"#,##0" MXN"', fill_color=BG_LIGHT)
+    # Resto de outputs
+    tail_rows = [
+        ("Leads Esperados (mensuales)", "=ROUNDDOWN(D24/D9,0)", "#,##0", 25),
+        ("Capacidad Máx. Mensual / Asesor",
+         f"=ROUNDDOWN({LEADS_DIA_POR_ASESOR}*{DIAS_PROMEDIO_MES},0)", "0", 26),
+        ("Sala Necesaria (asesores)", "=ROUNDDOWN(D25/D26,0)", "0", 27),
+    ]
+    for label, formula, fmt, row in tail_rows:
+        _label_cell(ws[f"B{row}"], label, size=10, bold=(row == 27))
+        _output_cell(ws[f"D{row}"], formula, fmt=fmt)
 
-    # ROA = Valor / Presupuesto
-    _label_cell(ws["B23"], "ROA Esperado", size=10)
-    _value_cell(ws["D23"], "=D20/D22", bold=True, fmt='0.0"x"', fill_color=BG_LIGHT)
-
-    # Unidades objetivo mensuales
-    _label_cell(ws["B24"], "Unidades Objetivo Mensuales", size=10)
-    _value_cell(ws["D24"], "=D7/D9", bold=True, fmt="0.00", fill_color=BG_LIGHT)
-
-    # Inversión en Pauta Mensual (destacada)
-    _label_cell(ws["B25"], "INVERSIÓN PAUTA MENSUAL", bold=True, size=11, fill_color=YELLOW)
-    _value_cell(ws["D25"], "=D22/D9", bold=True, fmt='"$"#,##0" MXN"',
-                fill_color=YELLOW, color=BLACK, size=11)
-
-    # Leads esperados mensuales
-    _label_cell(ws["B26"], "Leads Esperados (mensuales)", size=10)
-    _value_cell(ws["D26"], "=ROUNDDOWN(D25/D10,0)", bold=True, fmt="#,##0", fill_color=BG_LIGHT)
-
-    # Capacidad max por asesor
-    _label_cell(ws["B27"], "Capacidad Máx. Mensual / Asesor", size=10)
-    _value_cell(ws["D27"], f"=ROUNDDOWN({LEADS_DIA_POR_ASESOR}*{DIAS_PROMEDIO_MES},0)",
-                fmt="0", fill_color=BG_LIGHT)
-
-    # Sala necesaria
-    _label_cell(ws["B28"], "Sala Necesaria (asesores)", bold=True, size=10)
-    _value_cell(ws["D28"], "=ROUNDDOWN(D26/D27,0)", bold=True, fmt="0", fill_color=BG_LIGHT)
-
-    # ------ CASCADA DEL FUNNEL ------
-    ws["F6"] = "EFICIENCIA COMERCIAL ESPERADA"
-    ws["F6"].font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== CASCADA DEL FUNNEL (columna derecha) =====
+    _eyebrow(ws["F5"], "Eficiencia comercial esperada")
 
     funnel_rows = [
-        ("Citas (mes)", "=D26*D14", 8),
-        ("Asistencias (mes)", "=G8*D15", 9),
-        ("Apartados (mes)", "=G9*D16", 10),
-        ("Cierres (mes)", "=G10*D17", 11),
+        ("Citas (mes)", "=D25*D13", 7),
+        ("Asistencias (mes)", "=G7*D14", 8),
+        ("Apartados (mes)", "=G8*D15", 9),
+        ("Cierres (mes)", "=G9*D16", 10),
     ]
     for label, formula, row in funnel_rows:
         _label_cell(ws[f"F{row}"], label, size=10)
-        _value_cell(ws[f"G{row}"], formula, bold=True, fmt="0", fill_color=BG_LIGHT)
+        _output_cell(ws[f"G{row}"], formula, fmt="0", bold=(label == "Cierres (mes)"))
 
-    # ------ NOTAS ------
-    ws.merge_cells("B30:G31")
-    notas = ws["B30"]
+    # ===== NOTAS =====
+    ws.merge_cells("B29:G31")
     _label_cell(
-        notas,
-        "Notas: El % de inversión sobre valor del proyecto es un promedio fijo (3%) "
-        "como punto de partida; se ajusta según ticket, ubicación y dinámica del proyecto. "
-        "CPL y tasas de conversión basadas en benchmarks Zebra Real Estate; pueden "
-        "ajustarse al rendimiento real del cliente.",
-        size=8, color=MID_GREY
+        ws["B29"],
+        "Notas: el % de inversión sobre valor del proyecto es un promedio "
+        "fijo (3%) como punto de partida; se ajusta según ticket, ubicación "
+        "y dinámica del proyecto. CPL y tasas de conversión basadas en "
+        "benchmarks Zebra Real Estate; pueden ajustarse al rendimiento "
+        "real del cliente.",
+        size=8, color=INK_500
     )
-    notas.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    ws["B29"].alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
     # Altura de filas
-    ws.row_dimensions[2].height = 22
-    ws.row_dimensions[3].height = 22
-    for r in range(6, 32):
-        ws.row_dimensions[r].height = 20
+    ws.row_dimensions[2].height = 28
+    ws.row_dimensions[3].height = 16
+    for r in list(range(5, 29)):
+        ws.row_dimensions[r].height = 22
+    ws.row_dimensions[24].height = 26  # KPI con un poco más de aire
 
+
+# =============================================================================
+# Hoja 2, Plan 12 meses
+# =============================================================================
 
 def _build_plan_sheet(ws, calc_output, plan_output):
-    """
-    Hoja 2 — Plan de Inversión 12 meses.
-    Replica la estructura del DEMO con datos del cliente.
-    """
     from zebra_investment_calc import (
         LEADS_DIA_POR_ASESOR, DIAS_PROMEDIO_MES,
         VENTANA_CITA_DIAS, VENTANA_APARTADO_DIAS, VENTANA_CIERRE_DIAS,
@@ -219,6 +276,7 @@ def _build_plan_sheet(ws, calc_output, plan_output):
     )
 
     ws.title = "Plan 12 Meses"
+    ws.sheet_view.showGridLines = False
 
     # Anchos
     ws.column_dimensions["A"].width = 36
@@ -226,22 +284,15 @@ def _build_plan_sheet(ws, calc_output, plan_output):
         ws.column_dimensions[get_column_letter(c)].width = 12
 
     # Título
-    ws.merge_cells("A1:R1")
-    title = ws["A1"]
-    _header_cell(title, "PLAN DE INVERSIÓN: PROYECCIÓN A 12 MESES",
-                  fill_color=BLACK, font_color=YELLOW, size=14)
+    _title_cell(ws["A1"], "Plan de Inversión: Proyección a 12 meses", size=16)
+    _subtitle_cell(
+        ws["A2"],
+        "Zebra High Performance Marketing · Implementación + Operación · "
+        "6 ventanas de conversión por mes"
+    )
 
-    ws.merge_cells("A2:R2")
-    sub = ws["A2"]
-    _label_cell(sub,
-                "Zebra High Performance Marketing | Implementación + Operación | "
-                "6 ventanas de conversión por mes",
-                size=9, color=MID_GREY)
-    sub.alignment = Alignment(horizontal="center")
-
-    # ------ SUPUESTOS ------
-    ws["A4"] = "SUPUESTOS DEL MODELO"
-    ws["A4"].font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== SUPUESTOS =====
+    _eyebrow(ws["A4"], "Supuestos del modelo")
 
     supuestos = [
         ("CPL Proyectado", calc_output.cpl, '"$"#,##0" MXN"'),
@@ -259,34 +310,30 @@ def _build_plan_sheet(ws, calc_output, plan_output):
     row = 5
     for label, value, fmt in supuestos:
         _label_cell(ws.cell(row=row, column=1), label, size=9)
-        _value_cell(ws.cell(row=row, column=2), value, bold=True, fmt=fmt, fill_color="FFF8C9")
+        _input_cell(ws.cell(row=row, column=2), value, fmt=fmt)
         row += 1
 
-    # ------ PROYECCIÓN MENSUAL ------
+    # ===== PROYECCIÓN MENSUAL =====
     start_row = 18
-    ws.cell(row=start_row, column=1).value = "PROYECCIÓN MENSUAL: 12 MESES / 4 TRIMESTRES"
-    ws.cell(row=start_row, column=1).font = Font(
-        name="Arial", size=10, bold=True, color=BLACK
-    )
+    _eyebrow(ws.cell(row=start_row, column=1), "Proyección mensual: 12 meses / 4 trimestres")
 
-    # Header row
     hr = start_row + 1
-    headers = ["CONCEPTO"] + [f"M{i}" for i in range(1, 4)] + ["Q1"] \
-              + [f"M{i}" for i in range(4, 7)] + ["Q2"] \
-              + [f"M{i}" for i in range(7, 10)] + ["Q3"] \
-              + [f"M{i}" for i in range(10, 13)] + ["Q4"] \
-              + ["TOTAL"]
+    headers = (
+        ["CONCEPTO"]
+        + [f"M{i}" for i in range(1, 4)] + ["Q1"]
+        + [f"M{i}" for i in range(4, 7)] + ["Q2"]
+        + [f"M{i}" for i in range(7, 10)] + ["Q3"]
+        + [f"M{i}" for i in range(10, 13)] + ["Q4"]
+        + ["TOTAL"]
+    )
     for i, h in enumerate(headers, start=1):
-        _header_cell(ws.cell(row=hr, column=i), h, size=9)
+        _table_header(ws.cell(row=hr, column=i), h)
 
-    def _is_quarter_col(col_idx):
-        # cols 5, 9, 13, 17 son trimestres; col 18 es total
-        return col_idx in [5, 9, 13, 17, 18]
+    ws.row_dimensions[hr].height = 22
 
-    # Equipo e inversión
+    # ===== EQUIPO E INVERSIÓN =====
     cur = hr + 2
-    ws.cell(row=cur, column=1).value = "EQUIPO E INVERSIÓN"
-    ws.cell(row=cur, column=1).font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    _eyebrow(ws.cell(row=cur, column=1), "Equipo e inversión")
     cur += 1
 
     # Asesores activos
@@ -295,12 +342,11 @@ def _build_plan_sheet(ws, calc_output, plan_output):
         col = _month_to_col(i + 1)
         _value_cell(ws.cell(row=cur, column=col), m.asesores_activos,
                     fmt="0", align="center")
-    # Trimestres y total
     for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
         _value_cell(ws.cell(row=cur, column=q_col), q.asesores_promedio,
-                    bold=True, fmt="0.0", align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt="0.0", align="center", fill_color=INK_50)
     _value_cell(ws.cell(row=cur, column=18), plan_output.asesores_promedio_anual,
-                bold=True, fmt="0.0", align="center", fill_color=BG_LIGHT)
+                bold=True, fmt="0.0", align="center", fill_color=INK_50)
     cur += 1
 
     # Leads
@@ -311,12 +357,12 @@ def _build_plan_sheet(ws, calc_output, plan_output):
                     fmt="#,##0", align="center")
     for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
         _value_cell(ws.cell(row=cur, column=q_col), int(q.leads_total),
-                    bold=True, fmt="#,##0", align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt="#,##0", align="center", fill_color=INK_50)
     _value_cell(ws.cell(row=cur, column=18), int(plan_output.leads_total_anual),
-                bold=True, fmt="#,##0", align="center", fill_color=BG_LIGHT)
+                bold=True, fmt="#,##0", align="center", fill_color=INK_50)
     cur += 1
 
-    # Inversión pauta
+    # Inversión pauta: trimestres y total en ink (stat emphasis), meses en bone
     _label_cell(ws.cell(row=cur, column=1), "Inversión en pauta", size=9, bold=True)
     for i, m in enumerate(plan_output.meses):
         col = _month_to_col(i + 1)
@@ -324,14 +370,15 @@ def _build_plan_sheet(ws, calc_output, plan_output):
                     fmt='"$"#,##0', align="center")
     for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
         _value_cell(ws.cell(row=cur, column=q_col), q.inversion_total,
-                    bold=True, fmt='"$"#,##0', align="center", fill_color=YELLOW, color=BLACK)
+                    bold=True, fmt='"$"#,##0', align="center",
+                    fill_color=INK, color=BONE)
     _value_cell(ws.cell(row=cur, column=18), plan_output.inversion_total_anual,
-                bold=True, fmt='"$"#,##0', align="center", fill_color=YELLOW, color=BLACK)
+                bold=True, fmt='"$"#,##0', align="center",
+                fill_color=INK, color=BONE)
     cur += 2
 
-    # ------ EMBUDO REAL ------
-    ws.cell(row=cur, column=1).value = "EMBUDO REAL (con ventanas de conversión)"
-    ws.cell(row=cur, column=1).font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== EMBUDO REAL =====
+    _eyebrow(ws.cell(row=cur, column=1), "Embudo real (con ventanas de conversión)")
     cur += 1
 
     funnel_rows = [
@@ -351,77 +398,72 @@ def _build_plan_sheet(ws, calc_output, plan_output):
         for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
             val = getattr(q, attr)
             _value_cell(ws.cell(row=cur, column=q_col), val,
-                        bold=True, fmt=fmt, align="center", fill_color=BG_LIGHT)
-        # Total anual (suma de meses)
+                        bold=True, fmt=fmt, align="center", fill_color=INK_50)
         total = sum(getattr(m, attr) for m in plan_output.meses)
         _value_cell(ws.cell(row=cur, column=18), total,
-                    bold=True, fmt=fmt, align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt=fmt, align="center", fill_color=INK_50)
         cur += 1
-
     cur += 1
 
-    # ------ INGRESOS POR ESCENARIO ------
-    ws.cell(row=cur, column=1).value = "PROYECCIÓN DE INGRESOS (Cierres × Ticket × Multiplicador)"
-    ws.cell(row=cur, column=1).font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== INGRESOS POR ESCENARIO =====
+    _eyebrow(ws.cell(row=cur, column=1),
+             "Proyección de ingresos (cierres × ticket × multiplicador)")
     cur += 1
 
     for mult in MULTIPLICADORES_UNIDADES:
         _label_cell(ws.cell(row=cur, column=1),
-                     f"Ingresos @ {mult:.1f} unidad/operación", size=9)
+                    f"Ingresos @ {mult:.1f} unidad/operación", size=9)
         for i, m in enumerate(plan_output.meses):
             col = _month_to_col(i + 1)
             _value_cell(ws.cell(row=cur, column=col), m.ingresos_por_escenario[mult],
                         fmt='"$"#,##0', align="center")
         for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
             _value_cell(ws.cell(row=cur, column=q_col), q.ingresos_por_escenario[mult],
-                        bold=True, fmt='"$"#,##0', align="center", fill_color=BG_LIGHT)
+                        bold=True, fmt='"$"#,##0', align="center", fill_color=INK_50)
         _value_cell(ws.cell(row=cur, column=18),
                     plan_output.ingresos_anual_por_escenario[mult],
-                    bold=True, fmt='"$"#,##0', align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt='"$"#,##0', align="center", fill_color=INK_50)
         cur += 1
-
     cur += 1
 
-    # ------ MARGEN ------
-    ws.cell(row=cur, column=1).value = "MARGEN DE ADQUISICIÓN (Ingresos − Inversión)"
-    ws.cell(row=cur, column=1).font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== MARGEN =====
+    _eyebrow(ws.cell(row=cur, column=1),
+             "Margen de adquisición (ingresos menos inversión)")
     cur += 1
 
     for mult in MULTIPLICADORES_UNIDADES:
         _label_cell(ws.cell(row=cur, column=1),
-                     f"Margen @ {mult:.1f} unidad/operación", size=9)
+                    f"Margen @ {mult:.1f} unidad/operación", size=9)
         for i, m in enumerate(plan_output.meses):
             col = _month_to_col(i + 1)
             _value_cell(ws.cell(row=cur, column=col), m.margen_por_escenario[mult],
                         fmt='"$"#,##0', align="center")
         for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
             _value_cell(ws.cell(row=cur, column=q_col), q.margen_por_escenario[mult],
-                        bold=True, fmt='"$"#,##0', align="center", fill_color=BG_LIGHT)
+                        bold=True, fmt='"$"#,##0', align="center", fill_color=INK_50)
         _value_cell(ws.cell(row=cur, column=18),
                     plan_output.margen_anual_por_escenario[mult],
-                    bold=True, fmt='"$"#,##0', align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt='"$"#,##0', align="center", fill_color=INK_50)
         cur += 1
-
     cur += 1
 
-    # ------ ROA ACUMULADO ------
-    ws.cell(row=cur, column=1).value = "ROA ACUMULADO (Ingresos / Inversión)"
-    ws.cell(row=cur, column=1).font = Font(name="Arial", size=9, bold=True, color=MID_GREY)
+    # ===== ROA =====
+    _eyebrow(ws.cell(row=cur, column=1), "ROA acumulado (ingresos / inversión)")
     cur += 1
 
     for mult in MULTIPLICADORES_UNIDADES:
         _label_cell(ws.cell(row=cur, column=1),
-                     f"ROA @ {mult:.1f} unidad/operación", size=9)
+                    f"ROA @ {mult:.1f} unidad/operación", size=9)
         for i, m in enumerate(plan_output.meses):
             col = _month_to_col(i + 1)
             _value_cell(ws.cell(row=cur, column=col), m.roa_por_escenario[mult],
                         fmt='0.0"x"', align="center")
         for q_col, q in zip([5, 9, 13, 17], plan_output.trimestres):
             _value_cell(ws.cell(row=cur, column=q_col), q.roa_por_escenario[mult],
-                        bold=True, fmt='0.0"x"', align="center", fill_color=BG_LIGHT)
+                        bold=True, fmt='0.0"x"', align="center", fill_color=INK_50)
         _value_cell(ws.cell(row=cur, column=18),
                     plan_output.roa_anual_por_escenario[mult],
-                    bold=True, fmt='0.0"x"', align="center", fill_color=BG_LIGHT)
+                    bold=True, fmt='0.0"x"', align="center", fill_color=INK_50)
         cur += 1
 
 
@@ -430,13 +472,13 @@ def _month_to_col(month):
     M1=2, M2=3, M3=4, Q1=5, M4=6, M5=7, M6=8, Q2=9, ...
     """
     if month <= 3:
-        return month + 1  # M1=2, M2=3, M3=4
+        return month + 1
     elif month <= 6:
-        return month + 2  # M4=6, M5=7, M6=8
+        return month + 2
     elif month <= 9:
-        return month + 3  # M7=10, M8=11, M9=12
+        return month + 3
     else:
-        return month + 4  # M10=14, M11=15, M12=16
+        return month + 4
 
 
 def generate_investment_excel(calc_output, plan_output, output_path):
