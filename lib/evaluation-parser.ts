@@ -7,6 +7,7 @@ import {
   type EvaluationFallback,
 } from "@/prompts/evaluacion/schema";
 import { sanitizeClaudeText } from "@/lib/proposal-parser";
+import { safeJsonParse } from "@/lib/json-repair";
 
 export type ParsedEvaluation =
   | { kind: "evaluation"; data: EvaluationData }
@@ -29,12 +30,12 @@ export function parseEvaluationResponse(rawText: string): ParsedEvaluation {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(sanitized);
+    parsed = safeJsonParse(sanitized).data;
   } catch (error) {
     throw new EvaluationParseError(
       `El JSON del evaluador no se pudo parsear: ${error instanceof Error ? error.message : String(error)}`,
       "json_parse",
-      sanitized.slice(0, 500),
+      sanitized.slice(0, 12_000),
     );
   }
 
@@ -43,7 +44,7 @@ export function parseEvaluationResponse(rawText: string): ParsedEvaluation {
     throw new EvaluationParseError(
       "El JSON del evaluador no cumple el schema v2.3.",
       "schema_validate",
-      sanitized.slice(0, 500),
+      sanitized.slice(0, 12_000),
       result.error,
     );
   }
@@ -57,6 +58,6 @@ export function parseEvaluationResponse(rawText: string): ParsedEvaluation {
   throw new EvaluationParseError(
     "El JSON validó la union pero no encaja en ninguna rama discriminada.",
     "schema_validate",
-    sanitized.slice(0, 500),
+    sanitized.slice(0, 12_000),
   );
 }

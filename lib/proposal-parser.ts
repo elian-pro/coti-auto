@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeJsonParse } from "@/lib/json-repair";
 import {
   claudeResponseSchema,
   diagnosticoPreliminarSchema,
@@ -72,12 +73,12 @@ export function parseClaudeResponse(rawText: string): ParsedClaude {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(sanitized);
+    parsed = safeJsonParse(sanitized).data;
   } catch (error) {
     throw new ProposalParseError(
       `Claude no devolvió JSON válido: ${error instanceof Error ? error.message : String(error)}`,
       "json_parse",
-      sanitized.slice(0, 500),
+      sanitized.slice(0, 12_000),
     );
   }
 
@@ -86,7 +87,7 @@ export function parseClaudeResponse(rawText: string): ParsedClaude {
     throw new ProposalParseError(
       `El JSON de Claude no cumple el schema proposal_data v3.2.`,
       "schema_validate",
-      sanitized.slice(0, 500),
+      sanitized.slice(0, 12_000),
       result.error,
     );
   }
@@ -110,7 +111,7 @@ export function parseClaudeResponse(rawText: string): ParsedClaude {
   throw new ProposalParseError(
     "El JSON validó la union pero no encaja en ninguna rama discriminada.",
     "schema_validate",
-    sanitized.slice(0, 500),
+    sanitized.slice(0, 12_000),
   );
 }
 
