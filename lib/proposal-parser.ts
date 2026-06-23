@@ -24,18 +24,47 @@ export class ProposalParseError extends Error {
   }
 }
 
-// Sanitiza salidas comunes de Claude: quita fences ```json``` si las metió,
-// reemplaza em-dash (—) por dos puntos para honrar la regla del prompt
-// (Claude los mete pese a la instrucción explícita), y trimea espacios.
+// Sanitiza salidas de Claude. Acepta tres formas comunes y devuelve el JSON
+// listo para `JSON.parse`:
+//   1. JSON desnudo: `{"foo": ...}` ← cotización (prompt v3.2 lo exige)
+//   2. JSON en fences ```json ... ``` o ``` ... ```
+//   3. Markdown narrativo seguido / precedido de JSON (caso del evaluador
+//      v2.3 que entrega "reporte narrativo + JSON estructurado")
+//
+// También reemplaza em-dash (—) por dos puntos para honrar la regla del
+// prompt y del DS (Claude los mete pese a la instrucción explícita).
 export function sanitizeClaudeText(raw: string): string {
   let text = raw.trim();
-  if (text.startsWith("```")) {
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-    text = text.trim();
+
+  // Caso 2: fenced block. Buscar el bloque ```json``` (o ```...```) que
+  // contenga un objeto. Preferimos el ÚLTIMO para responder a "narrativa +
+  // JSON al final" (patrón del prompt evaluador v2.3).
+  const fenceMatches = [
+    ...text.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/gi),
+  ];
+  for (const match of fenceMatches.reverse()) {
+    const candidate = match[1].trim();
+    if (candidate.startsWith("{") && candidate.endsWith("}")) {
+      text = candidate;
+      break;
+    }
   }
-  // Em-dash es regla ZR explícita del DS y del prompt. Cinturón y tirantes.
+
+  // Caso 3: si la respuesta sigue sin empezar con `{`, agarrar del primer
+  // `{` hasta el último `}` (el JSON suele venir AL FINAL después del
+  // markdown narrativo).
+  if (!text.trim().startsWith("{")) {
+    const first = text.indexOf("{");
+    const last = text.lastIndexOf("}");
+    if (first !== -1 && last > first) {
+      text = text.slice(first, last + 1);
+    }
+  }
+
+  // Em-dash a dos puntos (regla ZR-02 + del prompt). Cinturón y tirantes.
   text = text.replaceAll("—", ":");
-  return text;
+
+  return text.trim();
 }
 
 export function parseClaudeResponse(rawText: string): ParsedClaude {
