@@ -1,7 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 # Lanza Next.js + uvicorn dentro del mismo contenedor.
 # Si cualquiera de los dos procesos muere, salimos con su exit code para que
 # Docker / EasyPanel reinicie el contenedor entero.
+#
+# Usa bash (no sh) porque dash de Debian no soporta `wait -n`.
 
 set -e
 
@@ -20,7 +22,7 @@ PY_PID=$!
 node /app/server.js &
 NODE_PID=$!
 
-# Espera al primero que termine. POSIX `wait -n` evita race conditions.
+# Espera al primero que termine. `wait -n` es de bash.
 wait -n "$PY_PID" "$NODE_PID"
 EXIT_CODE=$?
 
