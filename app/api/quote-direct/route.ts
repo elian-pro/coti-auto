@@ -226,6 +226,16 @@ export async function POST(request: Request) {
   }
 
   // 6. Subir a Drive
+  // Naming canónico: `{Cliente} {Tipo}` — sin slug ni hash, así los archivos
+  // se ven limpios en la carpeta y en la barra del Google Doc / Sheet.
+  // Sanitiza / y \ porque Drive los trata como path-separator.
+  const safeAccount = account.replace(/[\/\\]/g, "-").trim();
+  const driveName = {
+    docx: `${safeAccount} Propuesta`,
+    xlsx: `${safeAccount} Calculadora`,
+    pdf:  `${safeAccount} Diagnóstico`,
+  };
+
   let docsUrl: string | undefined;
   let sheetsUrl: string | undefined;
   let pdfUrl: string | undefined;
@@ -233,25 +243,13 @@ export async function POST(request: Request) {
   try {
     const [doc, sheet, evalPdf] = await Promise.all([
       docxFile
-        ? uploadDocxAsGoogleDoc(
-            docxFile.buffer,
-            docxFile.filename.replace(/\.docx$/i, ""),
-            FOLDER_COTIZACIONES,
-          )
+        ? uploadDocxAsGoogleDoc(docxFile.buffer, driveName.docx, FOLDER_COTIZACIONES)
         : Promise.resolve(null),
       xlsxFile
-        ? uploadXlsxAsGoogleSheet(
-            xlsxFile.buffer,
-            xlsxFile.filename.replace(/\.xlsx$/i, ""),
-            FOLDER_COTIZACIONES,
-          )
+        ? uploadXlsxAsGoogleSheet(xlsxFile.buffer, driveName.xlsx, FOLDER_COTIZACIONES)
         : Promise.resolve(null),
       evalFile
-        ? uploadPdfAsIs(
-            evalFile.buffer,
-            evalFile.filename.replace(/\.pdf$/i, ""),
-            FOLDER_EVALUACIONES,
-          )
+        ? uploadPdfAsIs(evalFile.buffer, driveName.pdf, FOLDER_EVALUACIONES)
         : Promise.resolve(null),
     ]);
     if (doc) {
