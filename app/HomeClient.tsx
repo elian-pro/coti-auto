@@ -1,12 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Header } from "@/components/Header";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { QuoteForm } from "@/components/QuoteForm";
 import { ResultCard } from "@/components/ResultCard";
-import { ZebraFrame } from "@/components/ZebraFrame";
-import { ZebraLogo } from "@/components/ZebraLogo";
 import type { QuoteMode, QuoteResult } from "@/lib/types";
 
 type Status = "idle" | "loading" | "done";
@@ -72,66 +69,47 @@ export default function HomeClient() {
   }
 
   return (
-    <ZebraFrame>
-      <Header />
-
-      <main className="flex-1">
-        {/* Hero */}
-        <section className="relative overflow-hidden">
-          <span className="zebra-motif" aria-hidden />
-          <div className="container-x relative z-10 py-16 md:py-24">
-            <div className="mx-auto max-w-3xl text-center">
-              <p className="eyebrow mb-5">Cotizaciones automáticas</p>
-              <h1 className="text-h1 font-semibold text-ink">
-                De la junta de Drive al documento listo.
-              </h1>
-              <p className="mx-auto mt-5 max-w-xl text-base text-ink-500 md:text-[15px]">
-                Pega la liga de la junta y el nombre de la cuenta. En aproximadamente
-                2 minutos tienes el documento generado en Drive y disponible en la carpeta
-                compartida.
-              </p>
-            </div>
+    <main className="flex-1">
+      {/* Hero */}
+      <section className="relative overflow-hidden">
+        <span className="zebra-motif" aria-hidden />
+        <div className="container-x relative z-10 py-16 md:py-24">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="eyebrow mb-5">Cotizaciones automáticas</p>
+            <h1 className="text-h1 font-semibold text-ink">
+              De la junta de Drive al documento listo.
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-base text-ink-500 md:text-[15px]">
+              Pega la liga de la junta y el nombre de la cuenta. En aproximadamente
+              2 minutos tienes el documento generado en Drive y disponible en la carpeta
+              compartida.
+            </p>
           </div>
-        </section>
-
-        {/* Form / Loading / Result section, recessed surface */}
-        <section className="bg-ink-50 py-16 md:py-24">
-          <div className="container-x">
-            <div className="mx-auto max-w-2xl">
-              {status === "idle" ? (
-                <QuoteForm
-                  onSubmit={handleSubmit}
-                  isSubmitting={false}
-                  errorMessage={errorMessage}
-                />
-              ) : null}
-
-              {status === "loading" ? (
-                <LoadingScreen account={account} mode={mode} />
-              ) : null}
-
-              {status === "done" && result ? (
-                <ResultCard account={account} result={result} onReset={handleReset} />
-              ) : null}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="bg-ink py-10 text-white/70">
-        <div className="container-x flex flex-col items-center justify-between gap-4 sm:flex-row">
-          <div className="flex items-center gap-3 text-white">
-            <ZebraLogo className="h-4 w-auto" />
-            <span className="eyebrow !text-white/60">Coti Auto</span>
-          </div>
-          <span
-            className="text-xs text-white/50"
-            style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
-          >
-            build {process.env.NEXT_PUBLIC_BUILD_TAG ?? "dev"}
-          </span>
         </div>
-      </footer>
-    </ZebraFrame>
+      </section>
+
+      {/* Form / Loading / Result section, recessed surface */}
+      <section className="bg-ink-50 py-16 md:py-24">
+        <div className="container-x">
+          <div className="mx-auto max-w-2xl">
+            {status === "idle" ? (
+              <QuoteForm
+                onSubmit={handleSubmit}
+                isSubmitting={false}
+                errorMessage={errorMessage}
+              />
+            ) : null}
+
+            {status === "loading" ? (
+              <LoadingScreen account={account} mode={mode} />
+            ) : null}
+
+            {status === "done" && result ? (
+              <ResultCard account={account} result={result} onReset={handleReset} />
+            ) : null}
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

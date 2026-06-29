@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { callClaude } from "@/lib/anthropic";
 import {
   uploadDocxAsGoogleDoc,
@@ -88,10 +89,24 @@ export async function POST(request: Request) {
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_|_$/g, "") || "propuesta";
 
+  // 0. Sesión: el token OAuth del usuario nos sirve para leer Docs privados
+  // sin tener que compartirlos con la cuenta de servicio.
+  const session = await auth();
+  const userAccessToken =
+    (session as { access_token?: string } | null)?.access_token;
+  if (session && (session as { error?: string }).error) {
+    return NextResponse.json(
+      {
+        error: `Sesión inválida: ${(session as { error?: string }).error}. Cierra sesión y entra de nuevo.`,
+      },
+      { status: 401 },
+    );
+  }
+
   // 1. Transcripción
   let transcriptText: string;
   try {
-    const transcript = await fetchTranscript(meetingUrl);
+    const transcript = await fetchTranscript(meetingUrl, { userAccessToken });
     transcriptText = transcript.text;
   } catch (error) {
     if (error instanceof TranscriptFetchError) {
