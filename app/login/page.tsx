@@ -3,13 +3,48 @@ import { ZebraLogo } from "@/components/ZebraLogo";
 
 export const dynamic = "force-dynamic";
 
+const ALLOWED_DOMAIN = (
+  process.env.AUTH_ALLOWED_DOMAIN ?? "zebradigital.marketing"
+)
+  .toLowerCase()
+  .trim();
+
+function errorCopy(code?: string): { title: string; body: string } | null {
+  if (!code) return null;
+  switch (code) {
+    case "AccessDenied":
+      return {
+        title: "Acceso restringido",
+        body: ALLOWED_DOMAIN
+          ? `Este dashboard solo está disponible para cuentas @${ALLOWED_DOMAIN}. Entra con tu correo corporativo.`
+          : "Tu cuenta no tiene permiso para entrar al dashboard.",
+      };
+    case "OAuthAccountNotLinked":
+      return {
+        title: "Cuenta ya vinculada",
+        body: "Este correo ya está asociado a otra forma de inicio de sesión.",
+      };
+    case "Configuration":
+      return {
+        title: "Configuración",
+        body: "Hay un problema con la configuración de OAuth. Avisa al admin.",
+      };
+    default:
+      return {
+        title: "No pudimos iniciar sesión",
+        body: `Código: ${code}. Vuelve a intentar.`,
+      };
+  }
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const callbackUrl = params.from ?? "/";
+  const errorMessage = errorCopy(params.error);
 
   async function doSignIn() {
     "use server";
@@ -28,10 +63,26 @@ export default async function LoginPage({
             <p className="eyebrow mb-3">Coti Auto</p>
             <h1 className="text-h2 font-semibold text-ink">Inicia sesión</h1>
             <p className="mt-3 text-sm text-ink-500">
-              Entra con tu cuenta de Google para que el dashboard pueda leer
-              los Docs a los que ya tienes acceso, sin compartir cada uno
-              manualmente.
+              Entra con tu cuenta de Google
+              {ALLOWED_DOMAIN ? (
+                <>
+                  {" "}
+                  <strong className="text-ink">@{ALLOWED_DOMAIN}</strong>
+                </>
+              ) : null}{" "}
+              para que el dashboard pueda leer los Docs a los que ya tienes
+              acceso, sin compartir cada uno manualmente.
             </p>
+
+            {errorMessage ? (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-ink-200 bg-ink-50 px-4 py-3"
+              >
+                <p className="eyebrow mb-1">{errorMessage.title}</p>
+                <p className="text-sm text-ink">{errorMessage.body}</p>
+              </div>
+            ) : null}
 
             <form action={doSignIn} className="mt-8">
               <button type="submit" className="btn-primary w-full">

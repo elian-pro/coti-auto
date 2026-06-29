@@ -17,6 +17,19 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
 ].join(" ");
 
+// Dominio único permitido (configurable). Si vacío, no se restringe.
+const ALLOWED_DOMAIN = (
+  process.env.AUTH_ALLOWED_DOMAIN ?? "zebradigital.marketing"
+)
+  .toLowerCase()
+  .trim();
+
+function isAllowedEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  if (!ALLOWED_DOMAIN) return true;
+  return email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
+}
+
 type RefreshTokenResult = {
   access_token: string;
   expires_in: number;
@@ -57,6 +70,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   session: { strategy: "jwt" },
   callbacks: {
+    async signIn({ profile, user }) {
+      // Aceptamos solo correos del dominio permitido.
+      const email = (profile?.email ?? user?.email)?.toLowerCase();
+      if (isAllowedEmail(email)) return true;
+      // false → NextAuth manda a la página de error con AccessDenied,
+      // que /login intercepta para mostrar mensaje claro.
+      return false;
+    },
     async jwt({ token, account }) {
       if (account) {
         // Primer login: guardamos los tokens crudos
@@ -106,5 +127,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   pages: {
     signIn: "/login",
+    // Cualquier error de auth (incluido AccessDenied por dominio) se muestra
+    // en /login, que lee el query param `error` para mostrar copy adecuado.
+    error: "/login",
   },
 });
