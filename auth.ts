@@ -24,6 +24,21 @@ const ALLOWED_DOMAIN = (
   .toLowerCase()
   .trim();
 
+// Sanity check de env vars críticas. Si faltan, el middleware fail-closed
+// igual redirige a /login, pero esto ayuda a diagnosticarlo en los logs.
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.AUTH_SECRET) {
+    console.error(
+      "[auth] FALTA AUTH_SECRET. NextAuth no puede firmar la cookie de sesión.",
+    );
+  }
+  if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
+    console.error(
+      "[auth] FALTAN AUTH_GOOGLE_ID o AUTH_GOOGLE_SECRET. El sign-in fallará.",
+    );
+  }
+}
+
 function isAllowedEmail(email: string | undefined | null): boolean {
   if (!email) return false;
   if (!ALLOWED_DOMAIN) return true;

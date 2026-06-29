@@ -1,31 +1,47 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-// Protege todo el dashboard. Si la sesión no existe (o si la sesión
-// vino con error de refresh), mandamos al usuario a /login. Excepciones:
-//   - /api/auth/*   (los endpoints de NextAuth: callback, signin, etc.)
+// Protege todo el dashboard. Excepciones (rutas públicas):
+//   - /api/auth/*   (los endpoints de NextAuth)
 //   - /api/health   (healthcheck que EasyPanel consulta sin sesión)
+//   - /health
 //   - /login        (la propia página de login)
-//   - /_next, favicon, build assets (Next los excluye con el matcher)
+//
+// Fail-closed: si auth() truena por env vars faltantes o cualquier otra
+// razón, redirigimos a /login con un error en vez de dejar pasar el
+// request. Nunca queremos que el dashboard quede expuesto por un mal
+// arranque de NextAuth.
 
-export default auth((req) => {
-  const { pathname } = req.nextUrl;
-  const isPublic =
+function isPublicPath(pathname: string): boolean {
+  return (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/health") ||
     pathname === "/health" ||
-    pathname === "/login";
+    pathname === "/login"
+  );
+}
 
-  if (isPublic) return NextResponse.next();
-  if (!req.auth) {
+export default auth((req) => {
+  try {
+    const { pathname } = req.nextUrl;
+    if (isPublicPath(pathname)) return NextResponse.next();
+
+    if (!req.auth) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error("[middleware] auth() falló, redirigiendo a /login:", error);
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("from", pathname);
+    loginUrl.searchParams.set("error", "Configuration");
     return NextResponse.redirect(loginUrl);
   }
-  return NextResponse.next();
 });
 
-// Aplica a todo excepto assets estáticos.
 export const config = {
+  // Matchea todo excepto assets estáticos. Sí queremos que aplique al "/" raíz.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
