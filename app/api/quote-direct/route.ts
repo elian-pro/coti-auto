@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { callClaude } from "@/lib/anthropic";
+import { callClaude, classifyAnthropicError } from "@/lib/anthropic";
 import {
   uploadDocxAsGoogleDoc,
   uploadPdfAsIs,
@@ -136,11 +136,14 @@ export async function POST(request: Request) {
     cotResult = cot;
     evalResult = ev;
   } catch (error) {
+    const classified = classifyAnthropicError(error);
     return NextResponse.json(
       {
-        error: `Claude falló: ${error instanceof Error ? error.message : String(error)}`,
+        error: classified.message,
+        error_kind: classified.kind,
+        stage: "claude",
       },
-      { status: 502 },
+      { status: classified.status },
     );
   }
 
