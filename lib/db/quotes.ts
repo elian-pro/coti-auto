@@ -1,4 +1,4 @@
-import { desc, sql } from "drizzle-orm";
+import { and, desc, gte, sql } from "drizzle-orm";
 import { ensureSchema, getDb, isDbEnabled } from "./client";
 import { insights, quotes, type NewInsight, type NewQuote, type Quote } from "./schema";
 
@@ -45,8 +45,20 @@ export type CoachTranscript = Pick<
   "id" | "createdAt" | "account" | "transcript" | "evaluationVerdict" | "evaluationScore"
 >;
 
-// Trae las últimas N transcripciones (sin filtro de fecha), para alimentar al
-// coach. Descarta runs sin transcript.
+// Solo runs que sí guardaron transcripción.
+const HAS_TRANSCRIPT = sql`${quotes.transcript} IS NOT NULL AND length(${quotes.transcript}) > 0`;
+
+const COACH_COLUMNS = {
+  id: quotes.id,
+  createdAt: quotes.createdAt,
+  account: quotes.account,
+  transcript: quotes.transcript,
+  evaluationVerdict: quotes.evaluationVerdict,
+  evaluationScore: quotes.evaluationScore,
+};
+
+// Trae las últimas N transcripciones (sin filtro de fecha). Se usa como
+// fallback cuando la ventana de días no junta material suficiente.
 export async function getRecentTranscripts(
   limit: number,
 ): Promise<CoachTranscript[]> {
@@ -56,21 +68,39 @@ export async function getRecentTranscripts(
     const db = getDb();
     if (!db) return [];
     return await db
-      .select({
-        id: quotes.id,
-        createdAt: quotes.createdAt,
-        account: quotes.account,
-        transcript: quotes.transcript,
-        evaluationVerdict: quotes.evaluationVerdict,
-        evaluationScore: quotes.evaluationScore,
-      })
+      .select(COACH_COLUMNS)
       .from(quotes)
-      .where(sql`${quotes.transcript} IS NOT NULL AND length(${quotes.transcript}) > 0`)
+      .where(HAS_TRANSCRIPT)
       .orderBy(desc(quotes.createdAt))
       .limit(limit);
   } catch (error) {
     console.error(
       "[db] getRecentTranscripts falló:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return [];
+  }
+}
+
+// Trae las transcripciones dentro de una ventana de fechas, topadas a `limit`.
+export async function getTranscriptsSince(
+  windowFrom: Date,
+  limit: number,
+): Promise<CoachTranscript[]> {
+  if (!isDbEnabled()) return [];
+  try {
+    await ensureSchema();
+    const db = getDb();
+    if (!db) return [];
+    return await db
+      .select(COACH_COLUMNS)
+      .from(quotes)
+      .where(and(gte(quotes.createdAt, windowFrom), HAS_TRANSCRIPT))
+      .orderBy(desc(quotes.createdAt))
+      .limit(limit);
+  } catch (error) {
+    console.error(
+      "[db] getTranscriptsSince falló:",
       error instanceof Error ? error.message : String(error),
     );
     return [];

@@ -91,14 +91,17 @@ export default async function EstusPage() {
                       <div>
                         <p className="eyebrow mb-3">Síntesis</p>
                         <h2 className="text-h2 font-semibold text-ink">
-                          Últimas {insights.nTranscripts}{" "}
+                          {insights.nTranscripts}{" "}
                           {insights.nTranscripts === 1 ? "llamada" : "llamadas"}
+                          {insights.usedFallback
+                            ? ""
+                            : ` · últimos ${insights.windowDays} días`}
                         </h2>
                         <p className="mt-2 text-xs text-ink-500">
                           {formatDate(insights.windowFrom)} a{" "}
                           {formatDate(insights.windowTo)}
-                          {insights.nTranscripts < insights.sampleSize
-                            ? ` · el coach analiza hasta ${insights.sampleSize}`
+                          {insights.usedFallback
+                            ? ` · pocas llamadas en los últimos ${insights.windowDays} días, se analizaron las ${insights.nTranscripts} más recientes`
                             : ""}
                         </p>
                       </div>

@@ -7,17 +7,24 @@ import { callClaude, classifyAnthropicError } from "@/lib/anthropic";
 import {
   getLatestInsight,
   getRecentTranscripts,
+  getTranscriptsSince,
   saveInsight,
   type CoachTranscript,
 } from "@/lib/db/quotes";
 import { safeJsonParse } from "@/lib/json-repair";
 
-// Cuántas llamadas recientes analiza el coach. Configurable por env para
-// subirlo conforme se acumule historial (ej. 10, 25) sin tocar código.
-const COACH_SAMPLE_SIZE = (() => {
-  const raw = Number.parseInt(process.env.COACH_SAMPLE_SIZE ?? "5", 10);
-  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 50) : 5;
-})();
+function envInt(name: string, fallback: number, cap: number): number {
+  const raw = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, cap) : fallback;
+}
+
+// Criterio principal: llamadas de los últimos N días.
+const COACH_WINDOW_DAYS = envInt("COACH_WINDOW_DAYS", 30, 365);
+// Piso: si la ventana junta menos de esto, completamos con las más recientes
+// aunque sean más viejas, para que /estus nunca salga vacío.
+const COACH_MIN_SAMPLE = envInt("COACH_MIN_SAMPLE", 5, 50);
+// Techo: tope duro para no reventar el tamaño del prompt.
+const COACH_MAX_SAMPLE = envInt("COACH_MAX_SAMPLE", 25, 50);
 
 const MAX_CHARS_PER_TRANSCRIPT = 6_000; // recorta transcripciones muy largas
 
@@ -98,7 +105,10 @@ function buildUserContent(transcripts: CoachTranscript[]): string {
 export type InsightsResult = {
   content: InsightsContent;
   nTranscripts: number;
-  sampleSize: number;
+  /** true = la ventana de días no alcanzó y se completó con las más recientes */
+  usedFallback: boolean;
+  windowDays: number;
+  minSample: number;
   generatedAt: Date;
   fromCache: boolean;
   windowFrom: Date;
@@ -108,8 +118,24 @@ export type InsightsResult = {
 export async function generateOrGetInsights(): Promise<
   InsightsResult | { error: string; kind?: string }
 > {
-  // 1. Traer las últimas N transcripciones
-  const rows = await getRecentTranscripts(COACH_SAMPLE_SIZE);
+  const cutoff = new Date(
+    Date.now() - COACH_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  // 1. Criterio principal: llamadas dentro de la ventana de días.
+  let rows = await getTranscriptsSince(cutoff, COACH_MAX_SAMPLE);
+  let usedFallback = false;
+
+  // 2. Piso: si la ventana no junta suficiente material, tomamos las últimas
+  // COACH_MIN_SAMPLE sin importar la fecha para que el coach no salga vacío.
+  if (rows.length < COACH_MIN_SAMPLE) {
+    const fallbackRows = await getRecentTranscripts(COACH_MIN_SAMPLE);
+    if (fallbackRows.length > rows.length) {
+      rows = fallbackRows;
+      usedFallback = true;
+    }
+  }
+
   if (rows.length === 0) {
     return {
       error:
@@ -135,7 +161,9 @@ export async function generateOrGetInsights(): Promise<
       return {
         content: parsed.data,
         nTranscripts: cached.nTranscripts,
-        sampleSize: COACH_SAMPLE_SIZE,
+        usedFallback,
+        windowDays: COACH_WINDOW_DAYS,
+        minSample: COACH_MIN_SAMPLE,
         generatedAt: cached.generatedAt,
         fromCache: true,
         windowFrom: cached.windowFrom,
@@ -187,7 +215,9 @@ export async function generateOrGetInsights(): Promise<
   return {
     content: parsed.data,
     nTranscripts: rows.length,
-    sampleSize: COACH_SAMPLE_SIZE,
+    usedFallback,
+    windowDays: COACH_WINDOW_DAYS,
+    minSample: COACH_MIN_SAMPLE,
     generatedAt: new Date(),
     fromCache: false,
     windowFrom,
