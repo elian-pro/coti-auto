@@ -5,16 +5,21 @@
 import { z } from "zod";
 import { callClaude, classifyAnthropicError } from "@/lib/anthropic";
 import {
-  getLatestInsightIfFresh,
-  getTranscriptsSince,
+  getLatestInsight,
+  getRecentTranscripts,
   saveInsight,
+  type CoachTranscript,
 } from "@/lib/db/quotes";
 import { safeJsonParse } from "@/lib/json-repair";
 
-const INSIGHTS_WINDOW_DAYS = 30;
-const INSIGHTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Cuántas llamadas recientes analiza el coach. Configurable por env para
+// subirlo conforme se acumule historial (ej. 10, 25) sin tocar código.
+const COACH_SAMPLE_SIZE = (() => {
+  const raw = Number.parseInt(process.env.COACH_SAMPLE_SIZE ?? "5", 10);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 50) : 5;
+})();
+
 const MAX_CHARS_PER_TRANSCRIPT = 6_000; // recorta transcripciones muy largas
-const MAX_TRANSCRIPTS = 25; // topa el input a Claude
 
 const insightsSchema = z.object({
   objeciones: z
@@ -77,16 +82,8 @@ Reglas duras:
 - No uses em-dash (—). Usa coma, dos puntos o paréntesis.
 - Primer carácter de la respuesta: {  Último: }  Nada más.`;
 
-function buildUserContent(
-  transcripts: {
-    account: string;
-    createdAt: Date;
-    transcript: string | null;
-    evaluationVerdict: string | null;
-    evaluationScore: number | null;
-  }[],
-): string {
-  const chunks = transcripts.slice(0, MAX_TRANSCRIPTS).map((t, i) => {
+function buildUserContent(transcripts: CoachTranscript[]): string {
+  const chunks = transcripts.map((t, i) => {
     const text = (t.transcript ?? "").slice(0, MAX_CHARS_PER_TRANSCRIPT);
     const verdict = t.evaluationVerdict ? ` · veredicto=${t.evaluationVerdict}` : "";
     const score =
@@ -101,6 +98,7 @@ function buildUserContent(
 export type InsightsResult = {
   content: InsightsContent;
   nTranscripts: number;
+  sampleSize: number;
   generatedAt: Date;
   fromCache: boolean;
   windowFrom: Date;
@@ -110,29 +108,8 @@ export type InsightsResult = {
 export async function generateOrGetInsights(): Promise<
   InsightsResult | { error: string; kind?: string }
 > {
-  const now = new Date();
-  const windowFrom = new Date(
-    now.getTime() - INSIGHTS_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-  );
-
-  // 1. Intentar cache
-  const cached = await getLatestInsightIfFresh(windowFrom, INSIGHTS_CACHE_TTL_MS);
-  if (cached) {
-    const parsed = insightsSchema.safeParse(cached.content);
-    if (parsed.success) {
-      return {
-        content: parsed.data,
-        nTranscripts: cached.nTranscripts,
-        generatedAt: cached.generatedAt,
-        fromCache: true,
-        windowFrom,
-        windowTo: now,
-      };
-    }
-  }
-
-  // 2. Traer transcripciones
-  const rows = await getTranscriptsSince(windowFrom);
+  // 1. Traer las últimas N transcripciones
+  const rows = await getRecentTranscripts(COACH_SAMPLE_SIZE);
   if (rows.length === 0) {
     return {
       error:
@@ -140,15 +117,34 @@ export async function generateOrGetInsights(): Promise<
     };
   }
 
-  const userContent = buildUserContent(
-    rows.map((r) => ({
-      account: r.account,
-      createdAt: r.createdAt,
-      transcript: r.transcript,
-      evaluationVerdict: r.evaluationVerdict,
-      evaluationScore: r.evaluationScore,
-    })),
-  );
+  // El lote va de la más vieja a la más nueva del set seleccionado.
+  const windowTo = rows[0].createdAt; // rows viene DESC
+  const windowFrom = rows[rows.length - 1].createdAt;
+
+  // 2. Cache: sirve solo si el lote analizado es EXACTAMENTE el mismo.
+  // Comparamos la transcripción más reciente y el conteo; si entró una
+  // llamada nueva (o cambió COACH_SAMPLE_SIZE), regeneramos.
+  const cached = await getLatestInsight();
+  if (
+    cached &&
+    cached.nTranscripts === rows.length &&
+    cached.windowTo.getTime() === windowTo.getTime()
+  ) {
+    const parsed = insightsSchema.safeParse(cached.content);
+    if (parsed.success) {
+      return {
+        content: parsed.data,
+        nTranscripts: cached.nTranscripts,
+        sampleSize: COACH_SAMPLE_SIZE,
+        generatedAt: cached.generatedAt,
+        fromCache: true,
+        windowFrom: cached.windowFrom,
+        windowTo: cached.windowTo,
+      };
+    }
+  }
+
+  const userContent = buildUserContent(rows);
 
   // 3. Claude
   let rawText: string;
@@ -183,7 +179,7 @@ export async function generateOrGetInsights(): Promise<
   // 5. Guardar en cache y devolver
   await saveInsight({
     windowFrom,
-    windowTo: now,
+    windowTo,
     nTranscripts: rows.length,
     content: parsed.data,
   });
@@ -191,9 +187,10 @@ export async function generateOrGetInsights(): Promise<
   return {
     content: parsed.data,
     nTranscripts: rows.length,
-    generatedAt: now,
+    sampleSize: COACH_SAMPLE_SIZE,
+    generatedAt: new Date(),
     fromCache: false,
     windowFrom,
-    windowTo: now,
+    windowTo,
   };
 }

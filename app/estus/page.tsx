@@ -68,7 +68,7 @@ export default async function EstusPage() {
                 Coach del equipo comercial
               </h1>
               <p className="mt-5 max-w-xl text-base text-ink-500 md:text-[15px]">
-                Objeciones y patrones que se repiten en las llamadas recientes, con
+                Objeciones y patrones que se repiten en las últimas llamadas, con
                 sugerencias para abordarlas. Sale de las transcripciones que ya se
                 cotizaron o diagnosticaron.
               </p>
@@ -91,8 +91,16 @@ export default async function EstusPage() {
                       <div>
                         <p className="eyebrow mb-3">Síntesis</p>
                         <h2 className="text-h2 font-semibold text-ink">
-                          {insights.nTranscripts} llamadas · últimos 30 días
+                          Últimas {insights.nTranscripts}{" "}
+                          {insights.nTranscripts === 1 ? "llamada" : "llamadas"}
                         </h2>
+                        <p className="mt-2 text-xs text-ink-500">
+                          {formatDate(insights.windowFrom)} a{" "}
+                          {formatDate(insights.windowTo)}
+                          {insights.nTranscripts < insights.sampleSize
+                            ? ` · el coach analiza hasta ${insights.sampleSize}`
+                            : ""}
+                        </p>
                       </div>
                       <span className="text-xs text-ink-500">
                         {insights.fromCache

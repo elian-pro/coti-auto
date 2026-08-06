@@ -1,4 +1,4 @@
-import { and, desc, gte, sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { ensureSchema, getDb, isDbEnabled } from "./client";
 import { insights, quotes, type NewInsight, type NewQuote, type Quote } from "./schema";
 
@@ -40,17 +40,22 @@ export async function listRecentQuotes(limit = 50): Promise<Quote[]> {
   }
 }
 
-// Trae solo las transcripciones dentro de una ventana, para alimentar al
-// coach. Filtra runs sin transcript (por si algún día guardamos placeholders).
-export async function getTranscriptsSince(
-  windowFrom: Date,
-): Promise<Pick<Quote, "id" | "createdAt" | "account" | "transcript" | "evaluationVerdict" | "evaluationScore">[]> {
+export type CoachTranscript = Pick<
+  Quote,
+  "id" | "createdAt" | "account" | "transcript" | "evaluationVerdict" | "evaluationScore"
+>;
+
+// Trae las últimas N transcripciones (sin filtro de fecha), para alimentar al
+// coach. Descarta runs sin transcript.
+export async function getRecentTranscripts(
+  limit: number,
+): Promise<CoachTranscript[]> {
   if (!isDbEnabled()) return [];
   try {
     await ensureSchema();
     const db = getDb();
     if (!db) return [];
-    const rows = await db
+    return await db
       .select({
         id: quotes.id,
         createdAt: quotes.createdAt,
@@ -60,29 +65,30 @@ export async function getTranscriptsSince(
         evaluationScore: quotes.evaluationScore,
       })
       .from(quotes)
-      .where(
-        and(
-          gte(quotes.createdAt, windowFrom),
-          sql`${quotes.transcript} IS NOT NULL AND length(${quotes.transcript}) > 0`,
-        ),
-      )
-      .orderBy(desc(quotes.createdAt));
-    return rows;
+      .where(sql`${quotes.transcript} IS NOT NULL AND length(${quotes.transcript}) > 0`)
+      .orderBy(desc(quotes.createdAt))
+      .limit(limit);
   } catch (error) {
     console.error(
-      "[db] getTranscriptsSince falló:",
+      "[db] getRecentTranscripts falló:",
       error instanceof Error ? error.message : String(error),
     );
     return [];
   }
 }
 
-// Cache lookup: la última fila de insights que cubre al menos hasta `since`
-// y se generó hace menos de `maxAgeMs`. Si no existe, retorna null.
-export async function getLatestInsightIfFresh(
-  since: Date,
-  maxAgeMs: number,
-): Promise<{ id: string; generatedAt: Date; nTranscripts: number; content: unknown } | null> {
+export type CachedInsight = {
+  id: string;
+  generatedAt: Date;
+  windowFrom: Date;
+  windowTo: Date;
+  nTranscripts: number;
+  content: unknown;
+};
+
+// Devuelve la fila de insights más reciente. La decisión de si sirve como
+// cache la toma el caller (compara contra el lote actual de transcripciones).
+export async function getLatestInsight(): Promise<CachedInsight | null> {
   if (!isDbEnabled()) return null;
   try {
     await ensureSchema();
@@ -95,19 +101,17 @@ export async function getLatestInsightIfFresh(
       .limit(1);
     if (rows.length === 0) return null;
     const row = rows[0];
-    const ageMs = Date.now() - row.generatedAt.getTime();
-    if (ageMs > maxAgeMs) return null;
-    // Si la ventana anterior no cubre el rango pedido, tampoco sirve.
-    if (row.windowFrom > since) return null;
     return {
       id: row.id,
       generatedAt: row.generatedAt,
+      windowFrom: row.windowFrom,
+      windowTo: row.windowTo,
       nTranscripts: row.nTranscripts,
       content: row.content,
     };
   } catch (error) {
     console.error(
-      "[db] getLatestInsightIfFresh falló:",
+      "[db] getLatestInsight falló:",
       error instanceof Error ? error.message : String(error),
     );
     return null;
