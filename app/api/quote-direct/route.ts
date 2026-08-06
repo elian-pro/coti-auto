@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { callClaude, classifyAnthropicError } from "@/lib/anthropic";
+import { saveQuoteRun } from "@/lib/db/quotes";
 import {
   uploadDocxAsGoogleDoc,
   uploadPdfAsIs,
@@ -285,6 +286,44 @@ export async function POST(request: Request) {
     );
   }
 
+  // 7. Persistir el run (fire-and-forget). Solo activa si DATABASE_URL existe.
+  const evaluationScore =
+    evalParsed && evalParsed.kind === "evaluation"
+      ? evalParsed.data.score_total
+      : null;
+  const evaluationVerdict =
+    evalParsed && evalParsed.kind === "evaluation"
+      ? evalParsed.data.veredicto
+      : null;
+  const tokensInput =
+    (cotResult?.usage?.input_tokens ?? 0) +
+    (evalResult?.usage?.input_tokens ?? 0);
+  const tokensOutput =
+    (cotResult?.usage?.output_tokens ?? 0) +
+    (evalResult?.usage?.output_tokens ?? 0);
+
+  void saveQuoteRun({
+    account,
+    meetingUrl,
+    userEmail: session?.user?.email ?? null,
+    mode,
+    transcript: transcriptText,
+    proposalJson: cotParsed && cotParsed.kind === "proposal" ? cotParsed.data : null,
+    evaluationJson:
+      evalParsed && evalParsed.kind === "evaluation" ? evalParsed.data : null,
+    docsUrl: docsUrl ?? null,
+    sheetsUrl: sheetsUrl ?? null,
+    pdfUrl: pdfUrl ?? null,
+    evaluationUrl: evaluationUrl ?? null,
+    evaluationScore,
+    evaluationVerdict,
+    tokensInput,
+    tokensOutput,
+    status: "ok",
+    errorStage: null,
+    errorMessage: null,
+  });
+
   return NextResponse.json(
     {
       status: "ok",
@@ -300,14 +339,8 @@ export async function POST(request: Request) {
           ? "ok"
           : "no_aplicable"
         : "skipped",
-      evaluation_score:
-        evalParsed && evalParsed.kind === "evaluation"
-          ? evalParsed.data.score_total
-          : undefined,
-      evaluation_verdict:
-        evalParsed && evalParsed.kind === "evaluation"
-          ? evalParsed.data.veredicto
-          : undefined,
+      evaluation_score: evaluationScore ?? undefined,
+      evaluation_verdict: evaluationVerdict ?? undefined,
       evaluation_error:
         evalParsed && evalParsed.kind === "fallback"
           ? evalParsed.data.razon

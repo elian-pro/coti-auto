@@ -28,6 +28,14 @@ export async function Header() {
         </div>
 
         <nav className="flex items-center gap-2 sm:gap-3">
+          <a
+            href="/estus"
+            className="btn-ghost px-3 py-2 text-xs md:px-5 md:py-3 md:text-sm"
+          >
+            <ChartIcon />
+            <span className="hidden sm:inline">Estus</span>
+            <span className="sm:hidden">Estus</span>
+          </a>
           <FolderButton href={COTIZACIONES_URL} full="Cotizaciones" short="Cotis" />
           <FolderButton href={EVALUACIONES_URL} full="Diagnósticos" short="Diag" />
 
@@ -95,6 +103,25 @@ function Avatar({ src, alt }: { src: string | null; alt: string }) {
     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ink text-[10px] font-semibold text-white">
       {alt.charAt(0).toUpperCase()}
     </span>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 3v18h18" />
+      <path d="M7 14l4-4 4 4 5-6" />
+    </svg>
   );
 }
 

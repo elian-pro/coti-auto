@@ -255,16 +255,37 @@ genéricas de PDF.
 
 ---
 
+## Persistencia y Estus (opcional)
+
+Cuando la env `DATABASE_URL` apunta a un Postgres:
+
+- **Cada run se archiva** en la tabla `quotes` (fire-and-forget, no bloquea
+  la respuesta al usuario). Se guarda: cuenta, correo del operador OAuth,
+  modo, transcripción, JSON de propuesta, JSON de evaluación, URLs de Drive,
+  score/veredicto y tokens usados.
+- **La página `/estus`** (link en el header) muestra:
+  - **Síntesis** del comportamiento comercial reciente (últimos 30 días).
+  - **Objeciones recurrentes** rankeadas por frecuencia + cómo abordarlas
+    (consejo accionable).
+  - **Patrones** que se repiten entre transcripciones.
+  - **Coaching accionable** para el siguiente diagnóstico.
+  - **Tabla de historial** con las últimas 50 corridas y links a los archivos.
+- El **coach** se genera con una llamada extra a Claude (system prompt
+  específico en `lib/insights.ts`) que recibe las transcripciones concatenadas
+  y devuelve un JSON con la estructura arriba. Se **cachea 24 h** en la tabla
+  `insights` para no re-generar en cada visita.
+- **Sin `DATABASE_URL`** todo sigue funcionando igual — el dashboard, el form,
+  la generación. Solo se pierde el historial y `/estus` muestra un mensaje
+  claro pidiendo el env var.
+
 ## Qué NO hace el dashboard
 
 - **No decide el modelo Zebra por su cuenta.** Solo lo hace Claude siguiendo
   el prompt v3.2. El dashboard no tiene reglas de negocio.
-- **No guarda historial.** Cada cotización es independiente. Si necesitas
-  ver una vieja, la buscas en Drive por nombre.
 - **No manda emails ni notifica.** El operador ve la card de resultado y
   desde ahí abre los archivos. Punto.
 - **No hay Supabase, no hay n8n, no hay flow visual.** Todo el flujo está
-  en código de este repo.
+  en código de este repo. El único servicio externo opcional es Postgres.
 
 ---
 
@@ -285,6 +306,11 @@ genéricas de PDF.
 | `services/zebra-api/zebra_evaluation_builder.py` | Builder PDF de diagnóstico. |
 | `auth.ts` | Configuración de NextAuth + filtro de dominio. |
 | `middleware.ts` | Protege todo el dashboard salvo login/health. |
+| `lib/db/schema.ts` | Esquema Drizzle (`quotes` + `insights`). |
+| `lib/db/client.ts` | Conexión Postgres + auto-bootstrap idempotente. |
+| `lib/db/quotes.ts` | Helpers `saveQuoteRun` / `listRecentQuotes` / `getTranscriptsSince`. |
+| `lib/insights.ts` | Coach: llama a Claude con las transcripciones y cachea. |
+| `app/estus/page.tsx` | Página del coach + historial. |
 | `Dockerfile` + `scripts/start.sh` | Un contenedor, dos procesos. |
 
 
