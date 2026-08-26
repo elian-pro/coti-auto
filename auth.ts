@@ -83,6 +83,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  // Detrás del proxy de EasyPanel (Traefik) el contenedor ve un host interno
+  // (0.0.0.0:80). Sin esto NextAuth arma el redirect_uri con ese host y Google
+  // responde redirect_uri_mismatch. Con trustHost usa X-Forwarded-Host, que
+  // es el dominio público real.
+  trustHost: true,
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ profile, user }) {
